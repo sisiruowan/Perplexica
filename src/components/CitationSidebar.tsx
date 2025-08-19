@@ -19,14 +19,28 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
   const [urlCopied, setUrlCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (citation && isOpen) {
       // Reset states when citation changes
       setIframeError(false);
       setUrlCopied(false);
+      
+      // Clear any existing timeout
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+      
       loadContent(citation);
     }
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+    };
   }, [citation, isOpen]);
 
   const loadContent = async (doc: Document) => {
@@ -45,27 +59,111 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
     // Since the entire pageContent is the cited content, we'll highlight it all
     // or find the most substantial part if it's very long
     const fullContent = doc.pageContent.trim();
-    const paragraphs = fullContent.split(/\n\n+/);
+    const paragraphs = fullContent.split(/\n\n+/).filter(p => p.trim().length > 0);
     
-    // If content is short, highlight all of it
-    if (fullContent.length < 500) {
+    // Always try to highlight the most relevant content
+    if (paragraphs.length === 0) {
       setHighlightedParagraph(fullContent);
+    } else if (paragraphs.length === 1) {
+      // Single paragraph, highlight it all
+      setHighlightedParagraph(paragraphs[0].trim());
     } else {
-      // Find the most substantial paragraph
-      const substantialParagraph = paragraphs
-        .filter(p => p.trim().length > 50)
-        .sort((a, b) => b.length - a.length)[0] || paragraphs[0] || '';
-      setHighlightedParagraph(substantialParagraph.trim());
+      // Multiple paragraphs - find the most substantial ones
+      const substantialParagraphs = paragraphs
+        .filter(p => p.trim().length > 30) // Lower threshold for better matching
+        .sort((a, b) => b.length - a.length);
+      
+      if (substantialParagraphs.length > 0) {
+        // Use the longest paragraph as the highlight target
+        setHighlightedParagraph(substantialParagraphs[0].trim());
+      } else {
+        // Fallback to first paragraph
+        setHighlightedParagraph(paragraphs[0].trim());
+      }
     }
     
     setIsLoading(false);
   };
 
+  const getErrorTitle = () => {
+    if (!citation?.metadata.url) return 'Direct webpage viewing not available';
+    
+    const url = citation.metadata.url;
+    
+    if (url.includes('news.microsoft.com') || url.includes('microsoft.com')) {
+      return 'Microsoft website blocks embedding';
+    } else if (url.includes('finance.yahoo.com') || url.includes('yahoo.com')) {
+      return 'Yahoo Finance blocks embedding';
+    } else if (url.includes('sciencenewstoday.org')) {
+      return 'Showing text content to prevent loading issues';
+    } else if (url.includes('github.com')) {
+      return 'GitHub blocks embedding for security';
+    } else if (url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com') || url.includes('facebook.com')) {
+      return 'Social media platform blocks embedding';
+    } else if (url.includes('cnn.com') || url.includes('bbc.com') || url.includes('reuters.com') || url.includes('bloomberg.com') || url.includes('wsj.com') || url.includes('nytimes.com') || url.includes('washingtonpost.com')) {
+      return 'News website blocks embedding';
+    } else {
+      return 'Direct webpage viewing not available';
+    }
+  };
+
+  const getErrorMessage = () => {
+    if (!citation?.metadata.url) return 'This website has disabled embedding for security or privacy reasons.';
+    
+    const url = citation.metadata.url;
+    
+    if (url.includes('news.microsoft.com') || url.includes('microsoft.com')) {
+      return 'Microsoft websites use Content Security Policy (CSP) and X-Frame-Options to prevent embedding for security reasons. The extracted content is displayed below.';
+    } else if (url.includes('finance.yahoo.com') || url.includes('yahoo.com')) {
+      return 'Yahoo Finance uses Content Security Policy (CSP) with frame-ancestors restrictions to prevent embedding. Only specific domains like aol.com and ouryahoo.com are allowed. The extracted content is displayed below.';
+    } else if (url.includes('sciencenewstoday.org')) {
+      return 'This website contains scripts that may cause repeated reloading. Displaying extracted content instead.';
+    } else if (url.includes('github.com')) {
+      return 'GitHub prevents embedding to protect user privacy and security. View the extracted content below.';
+    } else if (url.includes('linkedin.com') || url.includes('twitter.com') || url.includes('x.com') || url.includes('facebook.com')) {
+      return 'Social media platforms block embedding to protect user privacy and prevent unauthorized access.';
+    } else if (url.includes('cnn.com') || url.includes('bbc.com') || url.includes('reuters.com') || url.includes('bloomberg.com') || url.includes('wsj.com') || url.includes('nytimes.com') || url.includes('washingtonpost.com')) {
+      return 'Major news websites use Content Security Policy (CSP) to prevent embedding for security and copyright protection. The extracted content is shown below.';
+    } else {
+      return 'This website has disabled embedding for security or privacy reasons. The extracted content is shown below.';
+    }
+  };
+
   const renderWebContent = () => {
     if (!citation || !citation.metadata.url) return null;
     
-    // First check if iframe is already shown with error, show better experience
-    if (iframeError) {
+    // Check for problematic websites that cause infinite reloading or block embedding
+    const problematicDomains = [
+      'sciencenewstoday.org',
+      'litespeed.com',
+      'news.microsoft.com',
+      'microsoft.com',
+      'encord.com',
+      'github.com',
+      'linkedin.com',
+      'twitter.com',
+      'x.com',
+      'facebook.com',
+      'instagram.com',
+      'finance.yahoo.com',
+      'yahoo.com',
+      'aol.com',
+      'cnn.com',
+      'bbc.com',
+      'reuters.com',
+      'bloomberg.com',
+      'wsj.com',
+      'nytimes.com',
+      'washingtonpost.com',
+      // Add more domains as needed
+    ];
+    
+    const isProblematicSite = problematicDomains.some(domain => 
+      citation.metadata.url.includes(domain)
+    );
+    
+    // If it's a problematic site or iframe has error, show text content
+    if (iframeError || isProblematicSite) {
       return (
         <div className="h-full bg-gray-50 dark:bg-gray-900 overflow-auto">
           <div className="p-6">
@@ -75,12 +173,10 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
                 <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <h4 className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-1">
-                    Direct webpage viewing not available
+                    {getErrorTitle()}
                   </h4>
                   <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                    {citation.metadata.url.includes('microsoft.com') 
-                      ? 'Microsoft websites block embedding for security reasons.'
-                      : 'This website has disabled embedding for security or privacy reasons.'}
+                    {getErrorMessage()}
                   </p>
                 </div>
               </div>
@@ -164,17 +260,36 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
             className="w-full h-full border-0"
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             onLoad={() => {
+              // Clear timeout if iframe loads successfully
+              if (loadTimeoutRef.current) {
+                clearTimeout(loadTimeoutRef.current);
+              }
+              
               setIsLoading(false);
+              
+              // Set a timeout to detect problematic scripts that cause reloading
+              loadTimeoutRef.current = setTimeout(() => {
+                // If we're still loading after 10 seconds, likely a problematic script
+                if (isLoading) {
+                  console.warn('Iframe taking too long to load, switching to text view');
+                  setIframeError(true);
+                  setIsLoading(false);
+                }
+              }, 10000);
+              
               // Check if iframe actually loaded content
               try {
                 if (iframeRef.current?.contentWindow?.document?.body?.innerHTML === '') {
                   setIframeError(true);
                 }
               } catch (e) {
-                // Cross-origin, can't check content
+                // Cross-origin, can't check content - this is normal
               }
             }}
             onError={() => {
+              if (loadTimeoutRef.current) {
+                clearTimeout(loadTimeoutRef.current);
+              }
               setIframeError(true);
               setIsLoading(false);
             }}
@@ -194,6 +309,17 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
     const findHighlightedParagraphs = () => {
       const highlighted = new Set<number>();
       
+      if (!highlightedParagraph || highlightedParagraph.length === 0) {
+        // If no specific highlight target, highlight the first substantial paragraph
+        paragraphs.forEach((paragraph, index) => {
+          if (paragraph.trim().length > 50) {
+            highlighted.add(index);
+            return; // Only highlight the first one
+          }
+        });
+        return highlighted;
+      }
+      
       paragraphs.forEach((paragraph, index) => {
         const trimmedParagraph = paragraph.trim();
         if (!trimmedParagraph) return;
@@ -211,26 +337,59 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
         }
         
         // Check if this paragraph is contained within the highlighted paragraph
-        if (highlightedParagraph.includes(trimmedParagraph) && trimmedParagraph.length > 50) {
+        if (highlightedParagraph.includes(trimmedParagraph) && trimmedParagraph.length > 30) {
           highlighted.add(index);
           return;
         }
         
-        // Check for significant overlap (at least 70% of smaller text)
+        // Check for significant overlap (at least 60% of smaller text for better matching)
         const overlap = getTextOverlap(trimmedParagraph, highlightedParagraph);
         const minLength = Math.min(trimmedParagraph.length, highlightedParagraph.length);
-        if (overlap / minLength > 0.7) {
+        if (minLength > 0 && overlap / minLength > 0.6) {
+          highlighted.add(index);
+        }
+        
+        // Check for word-level similarity
+        const words1 = trimmedParagraph.toLowerCase().split(/\s+/);
+        const words2 = highlightedParagraph.toLowerCase().split(/\s+/);
+        const commonWords = words1.filter(word => 
+          word.length > 3 && words2.includes(word)
+        );
+        
+        if (commonWords.length >= Math.min(5, Math.floor(Math.min(words1.length, words2.length) * 0.3))) {
           highlighted.add(index);
         }
       });
       
-      // If no matches found and we have a short highlightedParagraph, highlight all substantial paragraphs
-      if (highlighted.size === 0 && highlightedParagraph.length < 500) {
+      // If no matches found, try to find the most similar paragraph
+      if (highlighted.size === 0) {
+        let bestMatch = -1;
+        let bestScore = 0;
+        
         paragraphs.forEach((paragraph, index) => {
-          if (paragraph.trim().length > 50) {
-            highlighted.add(index);
+          const trimmedParagraph = paragraph.trim();
+          if (trimmedParagraph.length < 30) return;
+          
+          const overlap = getTextOverlap(trimmedParagraph, highlightedParagraph);
+          const score = overlap / Math.max(trimmedParagraph.length, highlightedParagraph.length);
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = index;
           }
         });
+        
+        if (bestMatch >= 0 && bestScore > 0.1) {
+          highlighted.add(bestMatch);
+        } else {
+          // Last resort: highlight the first substantial paragraph
+          paragraphs.forEach((paragraph, index) => {
+            if (paragraph.trim().length > 50) {
+              highlighted.add(index);
+              return;
+            }
+          });
+        }
       }
       
       return highlighted;
@@ -372,9 +531,9 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop - covers entire screen when sidebar is open */}
       <div 
-        className={`fixed inset-0 bg-black/20 dark:bg-black/40 transition-opacity z-40 lg:hidden ${
+        className={`fixed inset-0 bg-black/20 dark:bg-black/40 transition-opacity z-40 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
