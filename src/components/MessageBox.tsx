@@ -140,6 +140,21 @@ const MessageBox = ({
     return <>{parts}</>;
   };
 
+  const processChildrenWithCitations = (children: any) => {
+    if (Array.isArray(children)) {
+      return children.map((child, index) => {
+        if (typeof child === 'string') {
+          return <TextWithCitations key={index}>{child}</TextWithCitations>;
+        }
+        return child;
+      });
+    }
+    if (typeof children === 'string') {
+      return <TextWithCitations>{children}</TextWithCitations>;
+    }
+    return children;
+  };
+
   const markdownOverrides: MarkdownToJSX.Options = {
     overrides: {
       think: {
@@ -151,15 +166,92 @@ const MessageBox = ({
       p: {
         component: ({ children, ...props }) => (
           <p {...props}>
-            <TextWithCitations>{children}</TextWithCitations>
+            {processChildrenWithCitations(children)}
           </p>
         ),
       },
       span: {
         component: ({ children, ...props }) => (
           <span {...props}>
-            <TextWithCitations>{children}</TextWithCitations>
+            {processChildrenWithCitations(children)}
           </span>
+        ),
+      },
+      li: {
+        component: ({ children, ...props }) => (
+          <li {...props}>
+            {processChildrenWithCitations(children)}
+          </li>
+        ),
+      },
+      td: {
+        component: ({ children, ...props }) => (
+          <td {...props}>
+            {processChildrenWithCitations(children)}
+          </td>
+        ),
+      },
+      h1: {
+        component: ({ children, ...props }) => (
+          <h1 {...props}>
+            {processChildrenWithCitations(children)}
+          </h1>
+        ),
+      },
+      h2: {
+        component: ({ children, ...props }) => (
+          <h2 {...props}>
+            {processChildrenWithCitations(children)}
+          </h2>
+        ),
+      },
+      h3: {
+        component: ({ children, ...props }) => (
+          <h3 {...props}>
+            {processChildrenWithCitations(children)}
+          </h3>
+        ),
+      },
+      h4: {
+        component: ({ children, ...props }) => (
+          <h4 {...props}>
+            {processChildrenWithCitations(children)}
+          </h4>
+        ),
+      },
+      h5: {
+        component: ({ children, ...props }) => (
+          <h5 {...props}>
+            {processChildrenWithCitations(children)}
+          </h5>
+        ),
+      },
+      h6: {
+        component: ({ children, ...props }) => (
+          <h6 {...props}>
+            {processChildrenWithCitations(children)}
+          </h6>
+        ),
+      },
+      div: {
+        component: ({ children, ...props }) => (
+          <div {...props}>
+            {processChildrenWithCitations(children)}
+          </div>
+        ),
+      },
+      strong: {
+        component: ({ children, ...props }) => (
+          <strong {...props}>
+            {processChildrenWithCitations(children)}
+          </strong>
+        ),
+      },
+      em: {
+        component: ({ children, ...props }) => (
+          <em {...props}>
+            {processChildrenWithCitations(children)}
+          </em>
         ),
       },
     },

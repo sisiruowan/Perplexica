@@ -16,11 +16,15 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
   const [isLoading, setIsLoading] = useState(false);
   const [iframeError, setIframeError] = useState(false);
   const [highlightedParagraph, setHighlightedParagraph] = useState<string>('');
+  const [urlCopied, setUrlCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     if (citation && isOpen) {
+      // Reset states when citation changes
+      setIframeError(false);
+      setUrlCopied(false);
       loadContent(citation);
     }
   }, [citation, isOpen]);
@@ -38,10 +42,21 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
     
     setContentType(isPDF ? 'pdf' : isWebContent ? 'web' : 'file');
     
-    // Extract the most relevant paragraph from the pageContent
-    const paragraphs = doc.pageContent.split(/\n\n+/);
-    const relevantParagraph = paragraphs.find(p => p.trim().length > 100) || paragraphs[0] || '';
-    setHighlightedParagraph(relevantParagraph.trim());
+    // Since the entire pageContent is the cited content, we'll highlight it all
+    // or find the most substantial part if it's very long
+    const fullContent = doc.pageContent.trim();
+    const paragraphs = fullContent.split(/\n\n+/);
+    
+    // If content is short, highlight all of it
+    if (fullContent.length < 500) {
+      setHighlightedParagraph(fullContent);
+    } else {
+      // Find the most substantial paragraph
+      const substantialParagraph = paragraphs
+        .filter(p => p.trim().length > 50)
+        .sort((a, b) => b.length - a.length)[0] || paragraphs[0] || '';
+      setHighlightedParagraph(substantialParagraph.trim());
+    }
     
     setIsLoading(false);
   };
@@ -49,90 +64,122 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
   const renderWebContent = () => {
     if (!citation || !citation.metadata.url) return null;
     
-    return (
-      <div className="relative h-full flex flex-col">
-        {/* Instructions bar */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 p-4">
-          <div className="flex items-start space-x-3">
-            <div className="flex-shrink-0">
-              <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-            </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                Viewing Original Web Page
-              </h4>
-              <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
-                The original webpage is displayed below. Some sites may not allow embedding.
-              </p>
-              <div className="bg-white dark:bg-gray-800 rounded p-3 mb-2">
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Cited content:
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400 italic">
-                  "{highlightedParagraph.substring(0, 200)}{highlightedParagraph.length > 200 ? '...' : ''}"
-                </p>
+    // First check if iframe is already shown with error, show better experience
+    if (iframeError) {
+      return (
+        <div className="h-full bg-gray-50 dark:bg-gray-900 overflow-auto">
+          <div className="p-6">
+            {/* Error header */}
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 mb-6">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-1">
+                    Direct webpage viewing not available
+                  </h4>
+                  <p className="text-xs text-yellow-800 dark:text-yellow-200">
+                    {citation.metadata.url.includes('microsoft.com') 
+                      ? 'Microsoft websites block embedding for security reasons.'
+                      : 'This website has disabled embedding for security or privacy reasons.'}
+                  </p>
+                </div>
               </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3 mb-6">
               <a
                 href={citation.metadata.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
               >
-                <Maximize2 className="w-3 h-3" />
-                <span>Open in new tab for best experience</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="w-4 h-4" />
+                <span>Open Original Page</span>
               </a>
+              
+              {/* Copy URL button */}
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(citation.metadata.url);
+                  setUrlCopied(true);
+                  setTimeout(() => setUrlCopied(false), 2000);
+                }}
+                className="inline-flex items-center space-x-2 px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+              >
+                <Globe className="w-4 h-4" />
+                <span>{urlCopied ? 'Copied!' : 'Copy URL'}</span>
+              </button>
             </div>
+
+            {/* Citation content */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="p-6">
+                <h4 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">
+                  Citation Content
+                </h4>
+                {renderTextContent()}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    
+    // Try to load iframe
+    return (
+      <div className="relative h-full flex flex-col">
+        {/* Info bar */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-blue-900 dark:text-blue-100">
+                Loading webpage...
+              </span>
+            </div>
+            <a
+              href={citation.metadata.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 flex items-center space-x-1"
+            >
+              <span>Open externally</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         </div>
 
         {/* Iframe container */}
         <div className="flex-1 relative">
-          {iframeError ? (
-            <div className="flex flex-col items-center justify-center h-full p-8 bg-gray-50 dark:bg-gray-900">
-              <AlertCircle className="w-12 h-12 text-yellow-500 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Unable to Display Web Page</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-4 max-w-md">
-                This website doesn't allow embedding. This is a security feature implemented by the website.
-              </p>
-              <a
-                href={citation.metadata.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                <span>Open in New Tab</span>
-                <ExternalLink className="w-4 h-4" />
-              </a>
-              
-              {/* Show text content as fallback */}
-              <div className="mt-8 w-full max-w-4xl">
-                <h4 className="text-sm font-medium mb-3">Citation Text Content:</h4>
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
-                  {renderTextContent()}
-                </div>
-              </div>
+          {isLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white dark:bg-gray-900 z-10">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-4"></div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Loading webpage...</p>
             </div>
-          ) : (
-            <>
-              {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900 z-10">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                </div>
-              )}
-              <iframe
-                ref={iframeRef}
-                src={citation.metadata.url}
-                className="w-full h-full border-0"
-                onLoad={() => setIsLoading(false)}
-                onError={() => {
-                  setIframeError(true);
-                  setIsLoading(false);
-                }}
-                title={citation.metadata.title || 'Web content'}
-              />
-            </>
           )}
+          <iframe
+            ref={iframeRef}
+            src={citation.metadata.url}
+            className="w-full h-full border-0"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            onLoad={() => {
+              setIsLoading(false);
+              // Check if iframe actually loaded content
+              try {
+                if (iframeRef.current?.contentWindow?.document?.body?.innerHTML === '') {
+                  setIframeError(true);
+                }
+              } catch (e) {
+                // Cross-origin, can't check content
+              }
+            }}
+            onError={() => {
+              setIframeError(true);
+              setIsLoading(false);
+            }}
+            title={citation.metadata.title || 'Web content'}
+          />
         </div>
       </div>
     );
@@ -143,20 +190,70 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
     
     const paragraphs = citation.pageContent.split(/\n\n+/);
     
+    // Find which paragraph(s) to highlight using fuzzy matching
+    const findHighlightedParagraphs = () => {
+      const highlighted = new Set<number>();
+      
+      paragraphs.forEach((paragraph, index) => {
+        const trimmedParagraph = paragraph.trim();
+        if (!trimmedParagraph) return;
+        
+        // Check for exact match
+        if (trimmedParagraph === highlightedParagraph) {
+          highlighted.add(index);
+          return;
+        }
+        
+        // Check if the highlighted paragraph is contained within this paragraph
+        if (trimmedParagraph.includes(highlightedParagraph)) {
+          highlighted.add(index);
+          return;
+        }
+        
+        // Check if this paragraph is contained within the highlighted paragraph
+        if (highlightedParagraph.includes(trimmedParagraph) && trimmedParagraph.length > 50) {
+          highlighted.add(index);
+          return;
+        }
+        
+        // Check for significant overlap (at least 70% of smaller text)
+        const overlap = getTextOverlap(trimmedParagraph, highlightedParagraph);
+        const minLength = Math.min(trimmedParagraph.length, highlightedParagraph.length);
+        if (overlap / minLength > 0.7) {
+          highlighted.add(index);
+        }
+      });
+      
+      // If no matches found and we have a short highlightedParagraph, highlight all substantial paragraphs
+      if (highlighted.size === 0 && highlightedParagraph.length < 500) {
+        paragraphs.forEach((paragraph, index) => {
+          if (paragraph.trim().length > 50) {
+            highlighted.add(index);
+          }
+        });
+      }
+      
+      return highlighted;
+    };
+    
+    const highlightedIndices = findHighlightedParagraphs();
+    let hasScrolled = false;
+    
     return (
       <div className="space-y-4 prose prose-sm dark:prose-invert max-w-none">
         {paragraphs.map((paragraph, index) => {
           const trimmedParagraph = paragraph.trim();
           if (!trimmedParagraph) return null;
           
-          const isHighlighted = trimmedParagraph === highlightedParagraph;
+          const isHighlighted = highlightedIndices.has(index);
           
           return isHighlighted ? (
             <div
               key={index}
               className="bg-yellow-100 dark:bg-yellow-900/30 border-l-4 border-yellow-500 pl-4 pr-2 py-2 rounded-r-lg transition-all duration-300"
               ref={(el) => {
-                if (el && isOpen) {
+                if (el && isOpen && !hasScrolled) {
+                  hasScrolled = true;
                   setTimeout(() => {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                   }, 300);
@@ -173,6 +270,23 @@ const CitationSidebar = ({ isOpen, citation, citationNumber, onClose }: Citation
         })}
       </div>
     );
+  };
+  
+  // Helper function to calculate text overlap
+  const getTextOverlap = (text1: string, text2: string) => {
+    const words1 = text1.toLowerCase().split(/\s+/);
+    const words2 = text2.toLowerCase().split(/\s+/);
+    const set1 = new Set(words1);
+    const set2 = new Set(words2);
+    
+    let overlap = 0;
+    set1.forEach(word => {
+      if (set2.has(word) && word.length > 2) {
+        overlap += word.length;
+      }
+    });
+    
+    return overlap;
   };
 
   const renderPDFContent = () => {
