@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { X, MessageCircle, Sparkles, Laugh, Brain, Zap, Music } from 'lucide-react';
 
 interface ClippyState {
@@ -52,7 +52,11 @@ const TIPS = [
   "🌟 Remember: I'm here to make your experience more enjoyable!"
 ];
 
-const ClippyAssistant = () => {
+export interface ClippyAssistantRef {
+  showTip: (message: string, duration?: number) => void;
+}
+
+const ClippyAssistant = forwardRef<ClippyAssistantRef>((props, ref) => {
   const [mounted, setMounted] = useState(false);
   const [state, setState] = useState<ClippyState>({
     position: { x: 20, y: 100 },
@@ -76,12 +80,41 @@ const ClippyAssistant = () => {
   const [mood, setMood] = useState<'happy' | 'thinking' | 'excited' | 'winking' | 'embarrassed'>('happy');
   const [showTip, setShowTip] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
+  const [customTip, setCustomTip] = useState('');
+  const [customTipTimeout, setCustomTipTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isDancing, setIsDancing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const clippyRef = useRef<HTMLDivElement>(null);
+
+  // Expose showTip method to parent components
+  useImperativeHandle(ref, () => ({
+    showTip: (message: string, duration: number = 5000) => {
+      // Clear any existing custom tip timeout
+      if (customTipTimeout) {
+        clearTimeout(customTipTimeout);
+      }
+      
+      // Set the custom tip
+      setCustomTip(message);
+      setShowTip(true);
+      setCurrentTip(message);
+      setMood('excited');
+      setIsDancing(true);
+      
+      // Auto-hide after duration
+      const timeout = setTimeout(() => {
+        setShowTip(false);
+        setCustomTip('');
+        setIsDancing(false);
+        setMood('happy');
+      }, duration);
+      
+      setCustomTipTimeout(timeout);
+    }
+  }));
 
   // Handle client-side mounting
   useEffect(() => {
@@ -725,17 +758,37 @@ const ClippyAssistant = () => {
           </div>
         )}
 
-        {/* Tip Bubble - positioned to the left */}
+        {/* Tip Bubble - positioned to the left with enhanced visibility */}
         {showTip && !state.isOpen && (
-          <div className="absolute top-0 right-24 w-64 animate-fade-in">
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg shadow-xl p-4 border-2 border-blue-200 dark:border-blue-700">
+          <div className={`absolute top-0 right-24 w-72 animate-fade-in ${customTip ? 'z-50' : ''}`}>
+            <div className={`
+              ${customTip 
+                ? 'bg-gradient-to-r from-red-500 to-pink-500 dark:from-red-600 dark:to-pink-600 text-white shadow-2xl border-2 border-red-300 dark:border-red-700' 
+                : 'bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border-2 border-blue-200 dark:border-blue-700'}
+              rounded-lg p-4 shadow-xl transform transition-all duration-300 hover:scale-105
+              ${isDancing ? 'animate-bounce' : ''}
+            `}>
               <div className="flex items-start space-x-2">
-                <Zap className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  {currentTip}
-                </p>
+                {customTip ? (
+                  <>
+                    <Sparkles className="w-6 h-6 text-yellow-300 flex-shrink-0 mt-0.5 animate-pulse" />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-white mb-1">🎉 Mode Switched!</p>
+                      <p className="text-sm text-white/90">
+                        {currentTip}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-gray-700 dark:text-gray-300">
+                      {currentTip}
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="absolute -right-2 top-4 w-0 h-0 border-t-8 border-t-transparent border-l-8 border-l-blue-50 dark:border-l-blue-900/20 border-b-8 border-b-transparent"></div>
+              <div className={`absolute -right-2 top-4 w-0 h-0 border-t-8 border-t-transparent border-l-8 ${customTip ? 'border-l-red-500 dark:border-l-red-600' : 'border-l-blue-50 dark:border-l-blue-900/20'} border-b-8 border-b-transparent`}></div>
             </div>
           </div>
         )}
@@ -869,6 +922,8 @@ const ClippyAssistant = () => {
       `}</style>
     </>
   );
-};
+});
+
+ClippyAssistant.displayName = 'ClippyAssistant';
 
 export default ClippyAssistant;

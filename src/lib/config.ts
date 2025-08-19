@@ -50,6 +50,9 @@ interface Config {
   API_ENDPOINTS: {
     SEARXNG: string;
   };
+  YOUTUBE: {
+    API_KEY: string;
+  };
 }
 
 type RecursivePartial<T> = {
@@ -101,6 +104,8 @@ export const getCustomOpenaiModelName = () =>
 
 export const getLMStudioApiEndpoint = () =>
   loadConfig().MODELS.LM_STUDIO.API_URL;
+
+export const getYouTubeApiKey = () => loadConfig().YOUTUBE.API_KEY;
 
 const mergeConfigs = (current: any, update: any): any => {
   if (update === null || update === undefined) {

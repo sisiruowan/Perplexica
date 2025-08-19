@@ -34,6 +34,7 @@ export interface MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
+    youtubeContext?: string,
   ) => Promise<eventEmitter>;
 }
 
@@ -60,7 +61,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
     this.config = config;
   }
 
-  private async createSearchRetrieverChain(llm: BaseChatModel) {
+  private async createSearchRetrieverChain(llm: BaseChatModel, youtubeContext?: string) {
     (llm as unknown as ChatOpenAI).temperature = 0;
 
     return RunnableSequence.from([
@@ -238,6 +239,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
     embeddings: Embeddings,
     optimizationMode: 'speed' | 'balanced' | 'quality',
     systemInstructions: string,
+    youtubeContext?: string,
   ) {
     return RunnableSequence.from([
       RunnableMap.from({
@@ -245,6 +247,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
         query: (input: BasicChainInput) => input.query,
         chat_history: (input: BasicChainInput) => input.chat_history,
         date: () => new Date().toISOString(),
+        youtubeContext: () => youtubeContext || '',
         context: RunnableLambda.from(async (input: BasicChainInput) => {
           const processedHistory = formatChatHistoryAsString(
             input.chat_history,
@@ -255,11 +258,12 @@ class MetaSearchAgent implements MetaSearchAgentType {
 
           if (this.config.searchWeb) {
             const searchRetrieverChain =
-              await this.createSearchRetrieverChain(llm);
+              await this.createSearchRetrieverChain(llm, youtubeContext);
 
             const searchRetrieverResult = await searchRetrieverChain.invoke({
               chat_history: processedHistory,
               query,
+              youtubeContext: youtubeContext || '',
             });
 
             query = searchRetrieverResult.query;
@@ -472,6 +476,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
     optimizationMode: 'speed' | 'balanced' | 'quality',
     fileIds: string[],
     systemInstructions: string,
+    youtubeContext?: string,
   ) {
     const emitter = new eventEmitter();
 
@@ -481,6 +486,7 @@ class MetaSearchAgent implements MetaSearchAgentType {
       embeddings,
       optimizationMode,
       systemInstructions,
+      youtubeContext,
     );
 
     const stream = answeringChain.streamEvents(

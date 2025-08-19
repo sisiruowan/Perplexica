@@ -6,6 +6,11 @@ import Focus from './MessageInputActions/Focus';
 import Optimization from './MessageInputActions/Optimization';
 import Attach from './MessageInputActions/Attach';
 import { File } from './ChatWindow';
+import { 
+  shouldAutoSwitchFocusMode, 
+  generateAutoSwitchMessage 
+} from '@/lib/utils/youtubeDetector';
+import { useClippy } from '@/contexts/ClippyContext';
 
 const EmptyChatMessageInput = ({
   sendMessage,
@@ -30,6 +35,7 @@ const EmptyChatMessageInput = ({
 }) => {
   const [copilotEnabled, setCopilotEnabled] = useState(false);
   const [message, setMessage] = useState('');
+  const { showTip } = useClippy();
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -57,17 +63,35 @@ const EmptyChatMessageInput = ({
     };
   }, []);
 
+  const handleSendMessage = (messageToSend: string) => {
+    if (!messageToSend.trim()) return;
+
+    // Auto-switch focus mode if YouTube URLs are detected
+    const autoSwitchResult = shouldAutoSwitchFocusMode(messageToSend, focusMode);
+    if (autoSwitchResult.shouldSwitch) {
+      setFocusMode(autoSwitchResult.recommendedMode);
+      
+      // Show user-friendly notification via Clippy
+      const switchMessage = generateAutoSwitchMessage(autoSwitchResult.detectedUrls);
+      if (switchMessage) {
+        showTip(switchMessage, 6000);
+      }
+    }
+
+    sendMessage(messageToSend);
+  };
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        sendMessage(message);
+        handleSendMessage(message);
         setMessage('');
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          sendMessage(message);
+          handleSendMessage(message);
           setMessage('');
         }
       }}

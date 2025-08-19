@@ -33,3 +33,6 @@ API_URL = "" # LM Studio API URL - http://host.docker.internal:1234
 
 [API_ENDPOINTS]
 SEARXNG = "" # SearxNG API URL - http://localhost:32768
+
+[YOUTUBE]
+API_KEY = "" # YouTube Data API v3 Key - Get from https://console.developers.google.com/

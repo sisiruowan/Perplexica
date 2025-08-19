@@ -6,6 +6,8 @@ import Sidebar from '@/components/Sidebar';
 import { Toaster } from 'sonner';
 import ThemeProvider from '@/components/theme/Provider';
 import { CitationProvider } from '@/contexts/CitationContext';
+import { YouTubeProvider } from '@/contexts/YouTubeContext';
+import { ClippyProvider } from '@/contexts/ClippyContext';
 import LayoutWithCitation from '@/components/LayoutWithCitation';
 
 const montserrat = Montserrat({
@@ -31,18 +33,22 @@ export default function RootLayout({
       <body className={cn('h-full', montserrat.className)}>
         <ThemeProvider>
           <CitationProvider>
-            <LayoutWithCitation>
-              <Sidebar>{children}</Sidebar>
-            </LayoutWithCitation>
-            <Toaster
-              toastOptions={{
-                unstyled: true,
-                classNames: {
-                  toast:
-                    'bg-light-primary dark:bg-dark-secondary dark:text-white/70 text-black-70 rounded-lg p-4 flex flex-row items-center space-x-2',
-                },
-              }}
-            />
+            <YouTubeProvider>
+              <ClippyProvider>
+                <LayoutWithCitation>
+                  <Sidebar>{children}</Sidebar>
+                </LayoutWithCitation>
+                <Toaster
+                  toastOptions={{
+                    unstyled: true,
+                    classNames: {
+                      toast:
+                        'bg-light-primary dark:bg-dark-secondary dark:text-white/70 text-black-70 rounded-lg p-4 flex flex-row items-center space-x-2',
+                    },
+                  }}
+                />
+              </ClippyProvider>
+            </YouTubeProvider>
           </CitationProvider>
         </ThemeProvider>
       </body>

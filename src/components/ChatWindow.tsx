@@ -12,6 +12,12 @@ import { getSuggestions } from '@/lib/actions';
 import { Settings } from 'lucide-react';
 import Link from 'next/link';
 import NextError from 'next/error';
+import { useYouTube } from '@/contexts/YouTubeContext';
+import { 
+  shouldAutoSwitchFocusMode, 
+  generateAutoSwitchMessage 
+} from '@/lib/utils/youtubeDetector';
+import { useClippy } from '@/contexts/ClippyContext';
 
 export type Message = {
   messageId: string;
@@ -267,6 +273,8 @@ const loadMessages = async (
 const ChatWindow = ({ id }: { id?: string }) => {
   const searchParams = useSearchParams();
   const initialMessage = searchParams.get('q');
+  const { getVideoContext, hasActiveVideo } = useYouTube();
+  const { showTip } = useClippy();
 
   const [chatId, setChatId] = useState<string | undefined>(id);
   const [newChatCreated, setNewChatCreated] = useState(false);
@@ -363,6 +371,18 @@ const ChatWindow = ({ id }: { id?: string }) => {
     if (!isConfigReady) {
       toast.error('Cannot send message before the configuration is ready');
       return;
+    }
+
+    // Auto-switch focus mode if YouTube URLs are detected
+    const autoSwitchResult = shouldAutoSwitchFocusMode(message, focusMode);
+    if (autoSwitchResult.shouldSwitch && !rewrite) {
+      setFocusMode(autoSwitchResult.recommendedMode);
+      
+      // Show user-friendly notification via Clippy
+      const switchMessage = generateAutoSwitchMessage(autoSwitchResult.detectedUrls);
+      if (switchMessage) {
+        showTip(switchMessage, 6000);
+      }
     }
 
     setLoading(true);
@@ -516,6 +536,7 @@ const ChatWindow = ({ id }: { id?: string }) => {
           provider: embeddingModelProvider.provider,
         },
         systemInstructions: localStorage.getItem('systemInstructions'),
+        youtubeContext: hasActiveVideo() ? getVideoContext() : undefined,
       }),
     });
 

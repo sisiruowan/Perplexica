@@ -1,16 +1,34 @@
 import axios from 'axios';
 import { Document } from 'langchain/document';
 import { YoutubeTranscript } from 'youtube-transcript';
+import { google } from 'googleapis';
 import { transcriptCache } from './transcriptCache';
 import { transcriptRateLimiter, videoInfoRateLimiter, waitForRateLimit } from './rateLimiter';
+import { getYouTubeApiKey } from '../config';
 
 export interface YouTubeVideoInfo {
   videoId: string;
   title: string;
   author: string;
+  channelId: string;
   duration: number;
   thumbnail: string;
   url: string;
+  publishedAt: string;
+  viewCount: number;
+  likeCount?: number;
+  commentCount?: number;
+  description: string;
+  tags: string[];
+  categoryId?: string;
+  defaultLanguage?: string;
+  defaultAudioLanguage?: string;
+  liveBroadcastContent?: string;
+  dimension?: string;
+  definition?: string;
+  caption?: string;
+  licensedContent?: boolean;
+  projection?: string;
 }
 
 export interface YouTubeTranscript {
@@ -49,12 +67,99 @@ export function detectYouTubeUrls(text: string): string[] {
   return [...new Set(matches)]; // Remove duplicates
 }
 
-// Fetch video info using YouTube oEmbed API (no API key required)
-async function fetchVideoInfo(videoId: string): Promise<YouTubeVideoInfo | null> {
+// Parse ISO 8601 duration to seconds
+function parseDuration(duration: string): number {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  
+  return hours * 3600 + minutes * 60 + seconds;
+}
+
+// Fetch video info using YouTube Data API v3
+async function fetchVideoInfoWithAPI(videoId: string): Promise<YouTubeVideoInfo | null> {
   try {
     // Apply rate limiting
     await waitForRateLimit(videoInfoRateLimiter);
     
+    const apiKey = getYouTubeApiKey();
+    if (!apiKey) {
+      console.warn('YouTube API key not configured, falling back to oEmbed');
+      return await fetchVideoInfoFallback(videoId);
+    }
+    
+    const youtube = google.youtube({
+      version: 'v3',
+      auth: apiKey,
+    });
+    
+    const response = await youtube.videos.list({
+      part: [
+        'snippet',
+        'contentDetails',
+        'statistics',
+        'status',
+        'recordingDetails',
+        'liveStreamingDetails'
+      ],
+      id: [videoId],
+    });
+    
+    const video = response.data.items?.[0];
+    if (!video) {
+      throw new Error('Video not found');
+    }
+    
+    const snippet = video.snippet!;
+    const contentDetails = video.contentDetails!;
+    const statistics = video.statistics!;
+    
+    return {
+      videoId,
+      title: snippet.title || 'Unknown Title',
+      author: snippet.channelTitle || 'Unknown Author',
+      channelId: snippet.channelId || '',
+      duration: parseDuration(contentDetails.duration || 'PT0S'),
+      thumbnail: snippet.thumbnails?.maxres?.url || 
+                 snippet.thumbnails?.high?.url || 
+                 snippet.thumbnails?.medium?.url || 
+                 snippet.thumbnails?.default?.url || '',
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      publishedAt: snippet.publishedAt || new Date().toISOString(),
+      viewCount: parseInt(statistics.viewCount || '0', 10),
+      likeCount: parseInt(statistics.likeCount || '0', 10),
+      commentCount: parseInt(statistics.commentCount || '0', 10),
+      description: snippet.description || '',
+      tags: snippet.tags || [],
+      categoryId: snippet.categoryId || undefined,
+      defaultLanguage: snippet.defaultLanguage || undefined,
+      defaultAudioLanguage: snippet.defaultAudioLanguage || undefined,
+      liveBroadcastContent: snippet.liveBroadcastContent || undefined,
+      dimension: contentDetails.dimension || undefined,
+      definition: contentDetails.definition || undefined,
+      caption: contentDetails.caption || undefined,
+      licensedContent: contentDetails.licensedContent || undefined,
+      projection: contentDetails.projection || undefined,
+    };
+  } catch (error: any) {
+    console.error('Error fetching video info with API:', error);
+    
+    // Check if it's a quota exceeded error
+    if (error.code === 403 && error.message?.includes('quota')) {
+      console.warn('YouTube API quota exceeded, falling back to oEmbed');
+    }
+    
+    // Fall back to oEmbed API
+    return await fetchVideoInfoFallback(videoId);
+  }
+}
+
+// Fallback: Fetch video info using YouTube oEmbed API (no API key required)
+async function fetchVideoInfoFallback(videoId: string): Promise<YouTubeVideoInfo | null> {
+  try {
     const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
     const response = await axios.get(oembedUrl);
     const data = response.data;
@@ -63,12 +168,17 @@ async function fetchVideoInfo(videoId: string): Promise<YouTubeVideoInfo | null>
       videoId,
       title: data.title || 'Unknown Title',
       author: data.author_name || 'Unknown Author',
+      channelId: '',
       duration: 0, // oEmbed doesn't provide duration
       thumbnail: data.thumbnail_url || '',
-      url: `https://www.youtube.com/watch?v=${videoId}`
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      publishedAt: new Date().toISOString(),
+      viewCount: 0,
+      description: '',
+      tags: [],
     };
   } catch (error) {
-    console.error('Error fetching video info:', error);
+    console.error('Error fetching video info with oEmbed:', error);
     return null;
   }
 }
@@ -111,9 +221,14 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeTran
         videoId: '',
         title: '',
         author: '',
+        channelId: '',
         duration: 0,
         thumbnail: '',
-        url: url
+        url: url,
+        publishedAt: new Date().toISOString(),
+        viewCount: 0,
+        description: '',
+        tags: [],
       },
       transcript: [],
       fullText: '',
@@ -131,7 +246,7 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeTran
   try {
     // Fetch video info and transcript in parallel
     const [videoInfo, transcript] = await Promise.all([
-      fetchVideoInfo(videoId),
+      fetchVideoInfoWithAPI(videoId),
       fetchTranscript(videoId)
     ]);
     
@@ -153,15 +268,20 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeTran
     
     return result;
   } catch (error: any) {
-    const videoInfo = await fetchVideoInfo(videoId);
+    const videoInfo = await fetchVideoInfoWithAPI(videoId);
     return {
       videoInfo: videoInfo || {
         videoId,
         title: 'Unknown Video',
         author: 'Unknown Author',
+        channelId: '',
         duration: 0,
         thumbnail: '',
-        url: `https://www.youtube.com/watch?v=${videoId}`
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        publishedAt: new Date().toISOString(),
+        viewCount: 0,
+        description: '',
+        tags: [],
       },
       transcript: [],
       fullText: '',
@@ -172,7 +292,7 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeTran
 
 // Convert YouTube transcript to Document for processing
 export function youTubeTranscriptToDocument(result: YouTubeTranscriptResult): Document {
-  const { videoInfo, fullText } = result;
+  const { videoInfo, fullText, transcript } = result;
   
   return new Document({
     pageContent: fullText,
@@ -180,9 +300,21 @@ export function youTubeTranscriptToDocument(result: YouTubeTranscriptResult): Do
       source: videoInfo.url,
       title: videoInfo.title,
       author: videoInfo.author,
+      channelId: videoInfo.channelId,
       type: 'youtube_transcript',
       videoId: videoInfo.videoId,
-      thumbnail: videoInfo.thumbnail
+      thumbnail: videoInfo.thumbnail,
+      duration: videoInfo.duration,
+      publishedAt: videoInfo.publishedAt,
+      viewCount: videoInfo.viewCount,
+      likeCount: videoInfo.likeCount,
+      commentCount: videoInfo.commentCount,
+      description: videoInfo.description,
+      tags: videoInfo.tags,
+      categoryId: videoInfo.categoryId,
+      transcriptData: transcript,
+      transcriptLength: transcript.length,
+      wordCount: fullText.split(/\s+/).length,
     }
   });
 }
