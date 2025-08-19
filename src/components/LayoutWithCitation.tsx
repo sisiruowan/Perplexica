@@ -3,6 +3,7 @@
 import { ReactNode } from 'react';
 import { useCitation } from '@/contexts/CitationContext';
 import CitationSidebar from './CitationSidebar';
+import ClippyAssistant from './ClippyAssistant';
 
 export default function LayoutWithCitation({ children }: { children: ReactNode }) {
   const { selectedCitation, citationNumber, isSidebarOpen, closeSidebar } = useCitation();
@@ -16,6 +17,7 @@ export default function LayoutWithCitation({ children }: { children: ReactNode }
         citationNumber={citationNumber}
         onClose={closeSidebar}
       />
+      <ClippyAssistant />
     </>
   );
 }

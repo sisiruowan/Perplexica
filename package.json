@@ -44,6 +44,7 @@
     "pdf-parse": "^1.1.1",
     "react": "^18",
     "react-dom": "^18",
+    "react-draggable": "^4.5.0",
     "react-text-to-speech": "^0.14.5",
     "react-textarea-autosize": "^8.5.3",
     "sonner": "^1.4.41",

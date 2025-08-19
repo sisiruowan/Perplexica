@@ -59,6 +59,54 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
+/* Clippy Assistant Animations */
+@keyframes clippy-wave {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+}
+
+@keyframes clippy-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes clippy-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-5deg); }
+  75% { transform: rotate(5deg); }
+}
+
+@keyframes clippy-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.clippy-wave {
+  animation: clippy-wave 1s ease-in-out;
+}
+
+.clippy-bounce {
+  animation: clippy-bounce 0.5s ease-in-out;
+}
+
+.clippy-wiggle {
+  animation: clippy-wiggle 0.3s ease-in-out;
+}
+
+.clippy-pulse {
+  animation: clippy-pulse 1s ease-in-out infinite;
+}
+
+/* Smooth dragging for Clippy */
+.react-draggable-dragging {
+  transition: none !important;
+}
+
+.react-draggable {
+  transition: transform 0.2s ease-out;
+}
+
 @layer base {
   .overflow-hidden-scrollable {
     -ms-overflow-style: none;
