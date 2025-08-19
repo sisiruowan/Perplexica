@@ -85,7 +85,6 @@ const ClippyAssistant = () => {
 
   // Handle client-side mounting
   useEffect(() => {
-    console.log('ClippyAssistant mounting...');
     setMounted(true);
     
     // Set initial position based on window size
@@ -212,17 +211,22 @@ const ClippyAssistant = () => {
     const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
     const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
     
-    setCurrentJoke(randomJoke);
-    setShowJoke(true);
-    setShowTip(false);
+    // Add joke as a message instead of showing as tooltip
+    const jokeMessage: ClippyMessage = {
+      id: Date.now().toString(),
+      text: randomJoke + " 😄",
+      isUser: false,
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => [...prev, jokeMessage]);
     setMood('winking');
     setIsAnimating(true);
     
-    setTimeout(() => setIsAnimating(false), 500);
     setTimeout(() => {
-      setShowJoke(false);
+      setIsAnimating(false);
       setMood('happy');
-    }, 8000);
+    }, 2000);
   };
 
   const showRandomTip = () => {
@@ -261,8 +265,25 @@ const ClippyAssistant = () => {
         response = "I'm here to help! 🌟 You can:\n• Search for information\n• Click citations for details\n• Chat with me anytime\n• Drag me around the screen\nWhat would you like to know more about?";
         setMood('excited');
       } else if (userInput.includes('joke')) {
-        showContextualJoke();
-        response = "Here's a joke for you! 😄 Want to hear another one?";
+        // Get contextual joke and add it to messages
+        const pageText = document.body.innerText.toLowerCase();
+        let jokeCategory = 'default';
+        
+        if (pageText.includes('search') || pageText.includes('query')) {
+          jokeCategory = 'search';
+        } else if (pageText.includes('code') || pageText.includes('function') || pageText.includes('github')) {
+          jokeCategory = 'code';
+        } else if (pageText.includes('ai') || pageText.includes('gpt') || pageText.includes('model')) {
+          jokeCategory = 'ai';
+        } else if (document.querySelectorAll('.citation-popup').length > 5) {
+          jokeCategory = 'citation';
+        }
+        
+        const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
+        const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
+        
+        response = randomJoke + "\n\n😄 Want to hear another one?";
+        setMood('winking');
       } else if (userInput.includes('dance')) {
         setIsDancing(true);
         setTimeout(() => setIsDancing(false), 3000);
@@ -308,61 +329,98 @@ const ClippyAssistant = () => {
     return expressions[mood];
   };
 
-  // Calculate chat window position to ensure it's always visible
+  // Calculate chat window position to ensure it's always visible and never overlaps Clippy
   const getChatWindowPosition = () => {
     const chatWidth = 384; // w-96 = 24rem = 384px
     const chatHeight = 500;
-    const margin = 10;
+    const margin = 20; // Increased margin to ensure no overlap
+    const clippyWidth = 80;
+    const clippyHeight = 80;
     
-    // Check if chat would go off-screen to the left
-    const leftPosition = state.position.x - 300;
-    const useRightPosition = leftPosition < margin;
+    // Calculate positions with enough clearance to avoid overlapping Clippy
+    const leftPosition = state.position.x - chatWidth - margin;
+    const rightPosition = state.position.x + clippyWidth + margin;
+    const topPosition = state.position.y - chatHeight - margin; // Position above Clippy with margin
+    const bottomPosition = state.position.y + clippyHeight + margin; // Position below Clippy with margin
     
-    // Check if chat would go off-screen to the top
-    const topPosition = state.position.y - chatHeight - 80 - margin;
-    const useBottomPosition = topPosition < margin;
+    // Check available space
+    const hasLeftSpace = leftPosition >= margin;
+    const hasRightSpace = rightPosition + chatWidth <= window.innerWidth - margin;
+    const hasTopSpace = topPosition >= margin;
+    const hasBottomSpace = bottomPosition + chatHeight <= window.innerHeight - margin;
     
-    if (useRightPosition && useBottomPosition) {
-      // Position to the right and below
+    // Priority order: left (top/bottom), right (top/bottom), forced positions
+    // Always prefer horizontal positioning to avoid overlapping Clippy vertically
+    
+    if (hasLeftSpace) {
+      // Left side positioning - prefer middle alignment with Clippy
+      const middleAlignedTop = state.position.y + (clippyHeight - chatHeight) / 2;
+      const safeTop = Math.max(margin, Math.min(middleAlignedTop, window.innerHeight - chatHeight - margin));
+      
       return {
-        position: 'bottom-right',
+        position: 'middle-left',
         style: {
-          top: '100%',
-          left: '0',
-          marginTop: '10px'
-        }
-      };
-    } else if (useRightPosition) {
-      // Position to the right and above
-      return {
-        position: 'top-right',
-        style: {
-          bottom: '100%',
-          left: '0',
-          marginBottom: '10px'
-        }
-      };
-    } else if (useBottomPosition) {
-      // Position to the left and below
-      return {
-        position: 'bottom-left',
-        style: {
-          top: '100%',
-          right: '0',
-          marginTop: '10px'
-        }
-      };
-    } else {
-      // Default: position to the left and above
-      return {
-        position: 'top-left',
-        style: {
-          bottom: '100%',
-          left: '-300px',
-          marginBottom: '10px'
+          top: `${safeTop - state.position.y}px`,
+          left: `${leftPosition - state.position.x}px`
         }
       };
     }
+    
+    if (hasRightSpace) {
+      // Right side positioning - prefer middle alignment with Clippy
+      const middleAlignedTop = state.position.y + (clippyHeight - chatHeight) / 2;
+      const safeTop = Math.max(margin, Math.min(middleAlignedTop, window.innerHeight - chatHeight - margin));
+      
+      return {
+        position: 'middle-right',
+        style: {
+          top: `${safeTop - state.position.y}px`,
+          left: `${rightPosition - state.position.x}px`
+        }
+      };
+    }
+    
+    // If no horizontal space, try vertical positioning
+    if (hasTopSpace) {
+      // Position above Clippy, centered horizontally
+      const centerAlignedLeft = state.position.x + (clippyWidth - chatWidth) / 2;
+      const safeLeft = Math.max(margin, Math.min(centerAlignedLeft, window.innerWidth - chatWidth - margin));
+      
+      return {
+        position: 'top-center',
+        style: {
+          top: `${topPosition - state.position.y}px`,
+          left: `${safeLeft - state.position.x}px`
+        }
+      };
+    }
+    
+    if (hasBottomSpace) {
+      // Position below Clippy, centered horizontally
+      const centerAlignedLeft = state.position.x + (clippyWidth - chatWidth) / 2;
+      const safeLeft = Math.max(margin, Math.min(centerAlignedLeft, window.innerWidth - chatWidth - margin));
+      
+      return {
+        position: 'bottom-center',
+        style: {
+          top: `${bottomPosition - state.position.y}px`,
+          left: `${safeLeft - state.position.x}px`
+        }
+      };
+    }
+    
+    // Last resort: force left side with partial visibility, but never overlap
+    const forcedLeft = Math.max(-chatWidth + 100, leftPosition); // Keep more visible
+    const middleAlignedTop = state.position.y + (clippyHeight - chatHeight) / 2;
+    const safeTop = Math.max(margin, Math.min(middleAlignedTop, window.innerHeight - chatHeight - margin));
+    
+    return {
+      position: 'forced-left',
+      style: {
+        top: `${safeTop - state.position.y}px`,
+        left: `${forcedLeft - state.position.x}px`
+      }
+    };
   };
 
   // Manual drag handling
@@ -399,8 +457,6 @@ const ClippyAssistant = () => {
   if (!mounted) {
     return null;
   }
-
-  console.log('ClippyAssistant rendering at position:', state.position);
 
   return (
     <>
@@ -474,9 +530,9 @@ const ClippyAssistant = () => {
           </div>
         )}
 
-        {/* Tip Bubble */}
+        {/* Tip Bubble - positioned to the left */}
         {showTip && !state.isOpen && (
-          <div className="absolute top-0 left-24 w-64 animate-fade-in">
+          <div className="absolute top-0 right-24 w-64 animate-fade-in">
             <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg shadow-xl p-4 border-2 border-blue-200 dark:border-blue-700">
               <div className="flex items-start space-x-2">
                 <Zap className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
@@ -484,7 +540,7 @@ const ClippyAssistant = () => {
                   {currentTip}
                 </p>
               </div>
-              <div className="absolute -left-2 top-4 w-0 h-0 border-t-8 border-t-transparent border-r-8 border-r-blue-50 dark:border-r-blue-900/20 border-b-8 border-b-transparent"></div>
+              <div className="absolute -right-2 top-4 w-0 h-0 border-t-8 border-t-transparent border-l-8 border-l-blue-50 dark:border-l-blue-900/20 border-b-8 border-b-transparent"></div>
             </div>
           </div>
         )}
@@ -519,7 +575,6 @@ const ClippyAssistant = () => {
               <button
                 onClick={() => {
                   showContextualJoke();
-                  setState(prev => ({ ...prev, isOpen: false }));
                 }}
                 className="flex items-center space-x-1 px-3 py-1.5 bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 rounded-lg hover:bg-yellow-200 dark:hover:bg-yellow-900/30 transition-colors text-sm"
               >

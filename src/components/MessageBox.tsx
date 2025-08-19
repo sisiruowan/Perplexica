@@ -22,6 +22,7 @@ import { useSpeech } from 'react-text-to-speech';
 import ThinkBox from './ThinkBox';
 import CitationPopup from './CitationPopup';
 import { useCitation } from '@/contexts/CitationContext';
+import YouTubeTranscriptDisplay from './YouTubeTranscriptDisplay';
 
 const ThinkTagProcessor = ({
   children,
@@ -290,6 +291,30 @@ const MessageBox = ({
                 <MessageSources sources={message.sources} />
               </div>
             )}
+            
+            {/* YouTube Transcript Display */}
+            {message.sources && message.sources.length > 0 && (() => {
+              const youtubeSource = message.sources.find(
+                source => source.metadata?.type === 'youtube' || 
+                  source.metadata?.videoId
+              );
+              
+              if (youtubeSource && youtubeSource.metadata) {
+                // Always show YouTube display for YouTube sources
+                return (
+                  <YouTubeTranscriptDisplay
+                    videoId={youtubeSource.metadata.videoId || ''}
+                    title={youtubeSource.metadata.title || 'YouTube Video'}
+                    author={youtubeSource.metadata.author || 'Unknown'}
+                    thumbnail={youtubeSource.metadata.thumbnail || ''}
+                    url={youtubeSource.metadata.url || ''}
+                    transcript={youtubeSource.metadata.transcript || youtubeSource.metadata.transcriptData || []}
+                    fullText={youtubeSource.pageContent || ''}
+                  />
+                );
+              }
+              return null;
+            })()}
             <div className="flex flex-col space-y-2">
               <div className="flex flex-row items-center space-x-2">
                 <Disc3

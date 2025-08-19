@@ -116,7 +116,7 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
           const sources = transcriptResults
             .filter(r => !r.error)
             .map((result) => ({
-              pageContent: result.fullText.substring(0, 200) + '...',
+              pageContent: result.fullText,
               metadata: {
                 title: result.videoInfo.title,
                 url: result.videoInfo.url,
@@ -124,7 +124,9 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
                 author: result.videoInfo.author,
                 type: 'youtube',
                 videoId: result.videoInfo.videoId,
-                transcriptLength: result.transcript.length
+                transcriptLength: result.transcript.length,
+                transcript: result.transcript, // Include full transcript data
+                transcriptData: result.transcript // Alternative property name
               }
             }));
           
