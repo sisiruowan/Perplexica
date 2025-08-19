@@ -73,7 +73,7 @@ const ClippyAssistant = () => {
   const [showJoke, setShowJoke] = useState(false);
   const [currentJoke, setCurrentJoke] = useState('');
   const [isAnimating, setIsAnimating] = useState(false);
-  const [mood, setMood] = useState<'happy' | 'thinking' | 'excited' | 'winking'>('happy');
+  const [mood, setMood] = useState<'happy' | 'thinking' | 'excited' | 'winking' | 'embarrassed'>('happy');
   const [showTip, setShowTip] = useState(false);
   const [currentTip, setCurrentTip] = useState('');
   const [isDancing, setIsDancing] = useState(false);
@@ -191,42 +191,182 @@ const ClippyAssistant = () => {
     };
   }, [mounted]);
 
-  const showContextualJoke = () => {
+  const showContextualJoke = async () => {
     if (typeof document === 'undefined') return;
     
-    // Analyze page content to determine context
-    const pageText = document.body.innerText.toLowerCase();
-    let jokeCategory = 'default';
+    // Show loading state
+    setMood('thinking');
+    setIsAnimating(true);
     
-    if (pageText.includes('search') || pageText.includes('query')) {
-      jokeCategory = 'search';
-    } else if (pageText.includes('code') || pageText.includes('function') || pageText.includes('github')) {
-      jokeCategory = 'code';
-    } else if (pageText.includes('ai') || pageText.includes('gpt') || pageText.includes('model')) {
-      jokeCategory = 'ai';
-    } else if (document.querySelectorAll('.citation-popup').length > 5) {
-      jokeCategory = 'citation';
-    }
-    
-    const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
-    const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
-    
-    // Add joke as a message instead of showing as tooltip
-    const jokeMessage: ClippyMessage = {
+    // Add a "thinking" message
+    const thinkingMessage: ClippyMessage = {
       id: Date.now().toString(),
-      text: randomJoke + " 😄",
+      text: "Let me think of a good joke... 🤔",
       isUser: false,
       timestamp: new Date()
     };
     
-    setMessages(prev => [...prev, jokeMessage]);
-    setMood('winking');
-    setIsAnimating(true);
+    setMessages(prev => [...prev, thinkingMessage]);
+    
+    try {
+      // Extract relevant content from the page
+      const pageContent = extractPageContent();
+      
+      // Call the AI joke API
+      const response = await fetch('/api/jokes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: pageContent.content,
+          context: pageContent.context
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate joke');
+      }
+      
+      const { joke } = await response.json();
+      
+      // Replace the thinking message with the actual joke
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastIndex = newMessages.length - 1;
+        if (lastIndex >= 0 && newMessages[lastIndex].text.includes("Let me think")) {
+          newMessages[lastIndex] = {
+            id: Date.now().toString(),
+            text: joke + " 😄",
+            isUser: false,
+            timestamp: new Date()
+          };
+        } else {
+          // Fallback: add as new message
+          newMessages.push({
+            id: Date.now().toString(),
+            text: joke + " 😄",
+            isUser: false,
+            timestamp: new Date()
+          });
+        }
+        return newMessages;
+      });
+      
+      setMood('winking');
+    } catch (error) {
+      console.error('Error generating AI joke:', error);
+      
+      // Fallback to predefined jokes
+      const pageText = document.body.innerText.toLowerCase();
+      let jokeCategory = 'default';
+      
+      if (pageText.includes('search') || pageText.includes('query')) {
+        jokeCategory = 'search';
+      } else if (pageText.includes('code') || pageText.includes('function') || pageText.includes('github')) {
+        jokeCategory = 'code';
+      } else if (pageText.includes('ai') || pageText.includes('gpt') || pageText.includes('model')) {
+        jokeCategory = 'ai';
+      } else if (document.querySelectorAll('.citation-popup').length > 5) {
+        jokeCategory = 'citation';
+      }
+      
+      const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
+      const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
+      
+      // Replace the thinking message with fallback joke
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastIndex = newMessages.length - 1;
+        if (lastIndex >= 0 && newMessages[lastIndex].text.includes("Let me think")) {
+          newMessages[lastIndex] = {
+            id: Date.now().toString(),
+            text: randomJoke + " 😄 (Oops, my AI brain hiccupped! Here's a classic instead.)",
+            isUser: false,
+            timestamp: new Date()
+          };
+        }
+        return newMessages;
+      });
+      
+      setMood('embarrassed');
+    }
     
     setTimeout(() => {
       setIsAnimating(false);
       setMood('happy');
     }, 2000);
+  };
+
+  const extractPageContent = () => {
+    if (typeof document === 'undefined') {
+      return { content: 'general conversation', context: '' };
+    }
+    
+    // Get the main content from chat messages
+    const chatMessages = document.querySelectorAll('[class*="message"]');
+    const recentMessages: string[] = [];
+    
+    // Extract recent chat content (last 3 messages)
+    for (let i = Math.max(0, chatMessages.length - 3); i < chatMessages.length; i++) {
+      const messageText = chatMessages[i]?.textContent?.trim();
+      if (messageText && messageText.length > 10) {
+        recentMessages.push(messageText);
+      }
+    }
+    
+    // Get search-related content
+    const searchInputs = document.querySelectorAll('input[type="text"], textarea');
+    const searchContent: string[] = [];
+    
+    searchInputs.forEach(input => {
+      const value = (input as HTMLInputElement).value?.trim();
+      if (value && value.length > 5) {
+        searchContent.push(value);
+      }
+    });
+    
+    // Get citation content
+    const citations = document.querySelectorAll('[class*="citation"]');
+    const hasCitations = citations.length > 0;
+    
+    // Get page title and meta content
+    const pageTitle = document.title || '';
+    const metaDescription = document.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+    
+    // Combine content intelligently
+    let content = '';
+    let context = '';
+    
+    if (recentMessages.length > 0) {
+      content = recentMessages.join(' ').substring(0, 500); // Limit to 500 chars
+      context = 'chat conversation';
+    } else if (searchContent.length > 0) {
+      content = searchContent.join(' ').substring(0, 500);
+      context = 'search query';
+    } else if (pageTitle) {
+      content = (pageTitle + ' ' + metaDescription).substring(0, 500);
+      context = 'page content';
+    } else {
+      content = 'AI assistant conversation';
+      context = 'general';
+    }
+    
+    // Add context about citations
+    if (hasCitations) {
+      context += ', with citations';
+    }
+    
+    // Add context about current page features
+    const pageText = document.body.innerText.toLowerCase();
+    if (pageText.includes('youtube')) {
+      context += ', YouTube content';
+    }
+    if (pageText.includes('search') || pageText.includes('query')) {
+      context += ', search interface';
+    }
+    
+    return { content: content.trim(), context: context.trim() };
   };
 
   const showRandomTip = () => {
@@ -265,25 +405,78 @@ const ClippyAssistant = () => {
         response = "I'm here to help! 🌟 You can:\n• Search for information\n• Click citations for details\n• Chat with me anytime\n• Drag me around the screen\nWhat would you like to know more about?";
         setMood('excited');
       } else if (userInput.includes('joke')) {
-        // Get contextual joke and add it to messages
-        const pageText = document.body.innerText.toLowerCase();
-        let jokeCategory = 'default';
+        // Generate AI joke asynchronously
+        response = "Let me think of a good joke for you... 🤔";
+        setMood('thinking');
         
-        if (pageText.includes('search') || pageText.includes('query')) {
-          jokeCategory = 'search';
-        } else if (pageText.includes('code') || pageText.includes('function') || pageText.includes('github')) {
-          jokeCategory = 'code';
-        } else if (pageText.includes('ai') || pageText.includes('gpt') || pageText.includes('model')) {
-          jokeCategory = 'ai';
-        } else if (document.querySelectorAll('.citation-popup').length > 5) {
-          jokeCategory = 'citation';
-        }
-        
-        const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
-        const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
-        
-        response = randomJoke + "\n\n😄 Want to hear another one?";
-        setMood('winking');
+        // Generate AI joke in the background
+        setTimeout(async () => {
+          try {
+            const pageContent = extractPageContent();
+            const jokeResponse = await fetch('/api/jokes', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                content: pageContent.content,
+                context: pageContent.context + ', user requested joke'
+              }),
+            });
+            
+            if (jokeResponse.ok) {
+              const { joke } = await jokeResponse.json();
+              
+              // Replace the thinking message with the AI joke
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const lastIndex = newMessages.length - 1;
+                if (lastIndex >= 0 && newMessages[lastIndex].text.includes("Let me think of a good joke")) {
+                  newMessages[lastIndex] = {
+                    ...newMessages[lastIndex],
+                    text: joke + "\n\n😄 Want to hear another one?"
+                  };
+                }
+                return newMessages;
+              });
+              setMood('winking');
+            } else {
+              throw new Error('AI joke failed');
+            }
+          } catch (error) {
+            // Fallback to predefined jokes
+            const pageText = document.body.innerText.toLowerCase();
+            let jokeCategory = 'default';
+            
+            if (pageText.includes('search') || pageText.includes('query')) {
+              jokeCategory = 'search';
+            } else if (pageText.includes('code') || pageText.includes('function') || pageText.includes('github')) {
+              jokeCategory = 'code';
+            } else if (pageText.includes('ai') || pageText.includes('gpt') || pageText.includes('model')) {
+              jokeCategory = 'ai';
+            } else if (document.querySelectorAll('.citation-popup').length > 5) {
+              jokeCategory = 'citation';
+            }
+            
+            const categoryJokes = JOKES.find(j => j.trigger === jokeCategory)?.jokes || JOKES[4].jokes;
+            const randomJoke = categoryJokes[Math.floor(Math.random() * categoryJokes.length)];
+            
+            // Replace the thinking message with fallback joke
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastIndex = newMessages.length - 1;
+              if (lastIndex >= 0 && newMessages[lastIndex].text.includes("Let me think of a good joke")) {
+                newMessages[lastIndex] = {
+                  ...newMessages[lastIndex],
+                  text: randomJoke + "\n\n😄 (My AI brain hiccupped, but here's a classic!)"
+                };
+              }
+              return newMessages;
+            });
+            setMood('embarrassed');
+            setTimeout(() => setMood('happy'), 2000);
+          }
+        }, 500);
       } else if (userInput.includes('dance')) {
         setIsDancing(true);
         setTimeout(() => setIsDancing(false), 3000);
@@ -324,7 +517,8 @@ const ClippyAssistant = () => {
       happy: "◉‿◉",
       thinking: "◉_◉",
       excited: "◉▽◉",
-      winking: "◉‿◉)"
+      winking: "◉‿◉)",
+      embarrassed: "◉﹏◉"
     };
     return expressions[mood];
   };
@@ -504,6 +698,7 @@ const ClippyAssistant = () => {
               {mood === 'thinking' && '💭'}
               {mood === 'excited' && '✨'}
               {mood === 'winking' && '😉'}
+              {mood === 'embarrassed' && '😅'}
             </div>
             
             {/* Speech bubble indicator when closed */}
