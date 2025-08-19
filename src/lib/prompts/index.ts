@@ -16,6 +16,10 @@ import {
   youtubeSearchResponsePrompt,
   youtubeSearchRetrieverPrompt,
 } from './youtubeSearch';
+import {
+  youtubeTranscriptResponsePrompt,
+  youtubeTranscriptRetrieverPrompt,
+} from './youtubeTranscript';
 
 export default {
   webSearchResponsePrompt,
@@ -29,4 +33,6 @@ export default {
   writingAssistantPrompt,
   youtubeSearchResponsePrompt,
   youtubeSearchRetrieverPrompt,
+  youtubeTranscriptResponsePrompt,
+  youtubeTranscriptRetrieverPrompt,
 };

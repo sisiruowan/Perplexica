@@ -7,7 +7,7 @@ import {
   TransitionChild,
 } from '@headlessui/react';
 import { Document } from '@langchain/core/documents';
-import { File } from 'lucide-react';
+import { File, Youtube } from 'lucide-react';
 import { Fragment, useState } from 'react';
 
 const MessageSources = ({ sources }: { sources: Document[] }) => {
@@ -40,6 +40,10 @@ const MessageSources = ({ sources }: { sources: Document[] }) => {
               {source.metadata.url === 'File' ? (
                 <div className="bg-dark-200 hover:bg-dark-100 transition duration-200 flex items-center justify-center w-6 h-6 rounded-full">
                   <File size={12} className="text-white/70" />
+                </div>
+              ) : source.metadata.type === 'youtube' || source.metadata.url?.includes('youtube.com') || source.metadata.url?.includes('youtu.be') ? (
+                <div className="bg-red-600 flex items-center justify-center w-4 h-4 rounded">
+                  <Youtube size={10} className="text-white" />
                 </div>
               ) : (
                 <img
@@ -74,6 +78,13 @@ const MessageSources = ({ sources }: { sources: Document[] }) => {
                   className="bg-dark-200 hover:bg-dark-100 transition duration-200 flex items-center justify-center w-6 h-6 rounded-full"
                 >
                   <File size={12} className="text-white/70" />
+                </div>
+              ) : source.metadata.type === 'youtube' || source.metadata.url?.includes('youtube.com') || source.metadata.url?.includes('youtu.be') ? (
+                <div
+                  key={i}
+                  className="bg-red-600 flex items-center justify-center w-4 h-4 rounded"
+                >
+                  <Youtube size={10} className="text-white" />
                 </div>
               ) : (
                 <img
@@ -125,6 +136,10 @@ const MessageSources = ({ sources }: { sources: Document[] }) => {
                             {source.metadata.url === 'File' ? (
                               <div className="bg-dark-200 hover:bg-dark-100 transition duration-200 flex items-center justify-center w-6 h-6 rounded-full">
                                 <File size={12} className="text-white/70" />
+                              </div>
+                            ) : source.metadata.type === 'youtube' || source.metadata.url?.includes('youtube.com') || source.metadata.url?.includes('youtu.be') ? (
+                              <div className="bg-red-600 flex items-center justify-center w-4 h-4 rounded">
+                                <Youtube size={10} className="text-white" />
                               </div>
                             ) : (
                               <img

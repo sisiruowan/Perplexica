@@ -51,6 +51,7 @@
     "tailwind-merge": "^2.2.2",
     "winston": "^3.17.0",
     "yet-another-react-lightbox": "^3.17.2",
+    "youtube-transcript": "^1.2.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

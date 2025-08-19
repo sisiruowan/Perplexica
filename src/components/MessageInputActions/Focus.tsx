@@ -48,6 +48,12 @@ const focusModes = [
     icon: <SiYoutube className="h-5 w-auto mr-0.5" />,
   },
   {
+    key: 'youtubeTranscript',
+    title: 'YouTube Transcript',
+    description: 'Extract and analyze video transcripts',
+    icon: <SiYoutube className="h-5 w-auto mr-0.5 text-red-600" />,
+  },
+  {
     key: 'redditSearch',
     title: 'Reddit',
     description: 'Search for discussions and opinions',
