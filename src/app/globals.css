@@ -2,6 +2,63 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Citation Popup Animation */
+@keyframes citation-popup-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Citation Sidebar Styles */
+.citation-highlight {
+  animation: highlight-fade-in 0.5s ease-out;
+}
+
+@keyframes highlight-fade-in {
+  from {
+    background-color: transparent;
+  }
+  to {
+    background-color: inherit;
+  }
+}
+
+/* Smooth scrolling for citation content */
+.citation-content {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for citation sidebar */
+.citation-sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.citation-sidebar-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.citation-sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.dark .citation-sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.citation-sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.dark .citation-sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 @layer base {
   .overflow-hidden-scrollable {
     -ms-overflow-style: none;

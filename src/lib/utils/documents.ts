@@ -47,7 +47,8 @@ export const getDocumentsFromLinks = async ({ links }: { links: string[] }) => {
           return;
         }
 
-        const parsedText = htmlToText(res.data.toString('utf8'), {
+        const htmlContent = res.data.toString('utf8');
+        const parsedText = htmlToText(htmlContent, {
           selectors: [
             {
               selector: 'a',
@@ -62,16 +63,17 @@ export const getDocumentsFromLinks = async ({ links }: { links: string[] }) => {
           .trim();
 
         const splittedText = await splitter.splitText(parsedText);
-        const title = res.data
-          .toString('utf8')
+        const title = htmlContent
           .match(/<title.*>(.*?)<\/title>/)?.[1];
 
-        const linkDocs = splittedText.map((text) => {
+        const linkDocs = splittedText.map((text, index) => {
           return new Document({
             pageContent: text,
             metadata: {
               title: title || link,
               url: link,
+              // Store original HTML for the first chunk (to avoid duplication)
+              ...(index === 0 && { originalHtml: htmlContent }),
             },
           });
         });

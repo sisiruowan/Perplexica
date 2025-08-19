@@ -20,6 +20,8 @@ import SearchImages from './SearchImages';
 import SearchVideos from './SearchVideos';
 import { useSpeech } from 'react-text-to-speech';
 import ThinkBox from './ThinkBox';
+import CitationPopup from './CitationPopup';
+import { useCitation } from '@/contexts/CitationContext';
 
 const ThinkTagProcessor = ({
   children,
@@ -55,9 +57,9 @@ const MessageBox = ({
   const [parsedMessage, setParsedMessage] = useState(message.content);
   const [speechMessage, setSpeechMessage] = useState(message.content);
   const [thinkingEnded, setThinkingEnded] = useState(false);
+  const { openCitation } = useCitation();
 
   useEffect(() => {
-    const citationRegex = /\[([^\]]+)\]/g;
     const regex = /\[(\d+)\]/g;
     let processedMessage = message.content;
 
@@ -74,59 +76,69 @@ const MessageBox = ({
       setThinkingEnded(true);
     }
 
-    if (
-      message.role === 'assistant' &&
-      message?.sources &&
-      message.sources.length > 0
-    ) {
-      setParsedMessage(
-        processedMessage.replace(
-          citationRegex,
-          (_, capturedContent: string) => {
-            const numbers = capturedContent
-              .split(',')
-              .map((numStr) => numStr.trim());
-
-            const linksHtml = numbers
-              .map((numStr) => {
-                const number = parseInt(numStr);
-
-                if (isNaN(number) || number <= 0) {
-                  return `[${numStr}]`;
-                }
-
-                const source = message.sources?.[number - 1];
-                const url = source?.metadata?.url;
-
-                if (url) {
-                  return `<a href="${url}" target="_blank" className="bg-light-secondary dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative">${numStr}</a>`;
-                } else {
-                  return ``;
-                }
-              })
-              .join('');
-
-            return linksHtml;
-          },
-        ),
-      );
-      setSpeechMessage(message.content.replace(regex, ''));
-      return;
-    } else if (
-      message.role === 'assistant' &&
-      message?.sources &&
-      message.sources.length === 0
-    ) {
-      setParsedMessage(processedMessage.replace(regex, ''));
-      setSpeechMessage(message.content.replace(regex, ''));
-      return;
-    }
-
+    // For speech, remove citation numbers
     setSpeechMessage(message.content.replace(regex, ''));
+    
+    // Keep the original message with citation markers for custom rendering
     setParsedMessage(processedMessage);
-  }, [message.content, message.sources, message.role]);
+  }, [message.content, message.role]);
 
   const { speechStatus, start, stop } = useSpeech({ text: speechMessage });
+
+  // Custom component to process text and wrap citations
+  const TextWithCitations = ({ children }: { children: React.ReactNode }) => {
+    if (typeof children !== 'string' || !message.sources || message.sources.length === 0) {
+      return <>{children}</>;
+    }
+
+    const citationRegex = /\[(\d+(?:,\s*\d+)*)\]/g;
+    const parts: (string | React.ReactElement)[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = citationRegex.exec(children)) !== null) {
+      // Add text before citation
+      const matchIndex = match.index;
+      const matchText = match[0];
+      
+      if (matchIndex > lastIndex) {
+        parts.push(children.substring(lastIndex, matchIndex));
+      }
+
+      // Process citation numbers
+      const citationNumbers = match[1].split(',').map(num => parseInt(num.trim()));
+      
+      citationNumbers.forEach((num, idx) => {
+        if (!isNaN(num) && num > 0 && num <= message.sources!.length) {
+          const source = message.sources![num - 1];
+          parts.push(
+            <CitationPopup
+              key={`${matchIndex}-${num}`}
+              citation={source}
+              citationNumber={num}
+              onCitationClick={openCitation}
+            >
+              <span className="bg-light-secondary dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative cursor-pointer hover:bg-light-200 dark:hover:bg-dark-200 transition-colors">
+                {num}
+              </span>
+            </CitationPopup>
+          );
+          if (idx < citationNumbers.length - 1) {
+            parts.push(' ');
+          }
+        }
+      });
+
+      lastIndex = matchIndex + matchText.length;
+    }
+
+    // Add remaining text
+    if (lastIndex < children.length) {
+      parts.push(children.substring(lastIndex));
+    }
+
+    return <>{parts}</>;
+  };
 
   const markdownOverrides: MarkdownToJSX.Options = {
     overrides: {
@@ -135,6 +147,20 @@ const MessageBox = ({
         props: {
           thinkingEnded: thinkingEnded,
         },
+      },
+      p: {
+        component: ({ children, ...props }) => (
+          <p {...props}>
+            <TextWithCitations>{children}</TextWithCitations>
+          </p>
+        ),
+      },
+      span: {
+        component: ({ children, ...props }) => (
+          <span {...props}>
+            <TextWithCitations>{children}</TextWithCitations>
+          </span>
+        ),
       },
     },
   };
