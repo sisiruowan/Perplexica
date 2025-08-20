@@ -42,10 +42,12 @@ export const YouTubeProvider: React.FC<YouTubeProviderProps> = ({ children }) =>
   const [isVideoPageOpen, setIsVideoPageOpen] = useState(false);
 
   const setCurrentVideo = (video: YouTubeVideoData | null) => {
+    // Video logging removed to prevent infinite logging
     setCurrentVideoState(video);
     if (video) {
       addVideoToHistory(video);
-      setIsVideoPageOpen(true);
+      // Don't automatically open the video page modal
+      // setIsVideoPageOpen(true);
     }
   };
 

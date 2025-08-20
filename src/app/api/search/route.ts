@@ -114,9 +114,15 @@ export const POST = async (req: Request) => {
 
     const searchHandler: MetaSearchAgentType = searchHandlers[body.focusMode];
 
+    console.log('[Search API] Focus mode:', body.focusMode);
+    console.log('[Search API] Available handlers:', Object.keys(searchHandlers));
+    console.log('[Search API] Handler found:', !!searchHandler);
+
     if (!searchHandler) {
       return Response.json({ message: 'Invalid focus mode' }, { status: 400 });
     }
+
+    console.log('[Search API] Using handler:', searchHandler.constructor.name);
 
     const emitter = await searchHandler.searchAndAnswer(
       body.query,

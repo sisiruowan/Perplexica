@@ -57,10 +57,31 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
     youtubeContext?: string,
   ): Promise<eventEmitter> {
     const emitter = new eventEmitter();
+
+    // Defer the actual processing to the next tick so event listeners can be set up
+    setImmediate(async () => {
+      await this.processYouTubeSearch(emitter, message, history, llm, embeddings, optimizationMode, fileIds, systemInstructions, youtubeContext);
+    });
+
+    return emitter;
+  }
+
+  private async processYouTubeSearch(
+    emitter: eventEmitter,
+    message: string,
+    history: BaseMessage[],
+    llm: BaseChatModel,
+    embeddings: Embeddings,
+    optimizationMode: 'speed' | 'balanced' | 'quality',
+    fileIds: string[],
+    systemInstructions: string,
+    youtubeContext?: string,
+  ) {
     
     try {
       // Detect YouTube URLs in the message
       const youtubeUrls = detectYouTubeUrls(message);
+      console.log('[YouTubeTranscriptAgent] Detected YouTube URLs:', youtubeUrls);
       
       if (youtubeUrls.length > 0) {
         // Process YouTube URLs
@@ -69,7 +90,13 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
         
         for (const url of youtubeUrls) {
           try {
+            console.log(`[YouTubeTranscriptAgent] Processing URL: ${url}`);
             const result = await extractYouTubeTranscript(url);
+            console.log(`[YouTubeTranscriptAgent] Transcript result:`, {
+              hasError: !!result.error,
+              videoTitle: result.videoInfo?.title,
+              transcriptLength: result.transcript?.length,
+            });
             transcriptResults.push(result);
             
             if (!result.error) {
@@ -78,7 +105,7 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
               documents.push(doc);
             }
           } catch (error: any) {
-            console.error(`Error processing ${url}:`, error);
+            console.error(`[YouTubeTranscriptAgent] Error processing ${url}:`, error);
           }
         }
         
@@ -114,11 +141,33 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
           );
 
           // Emit sources first
+          console.log('[YouTubeTranscriptAgent] Creating sources from results:', transcriptResults.length);
+          console.log('[YouTubeTranscriptAgent] Transcript results details:', transcriptResults.map(r => ({
+            hasError: !!r.error,
+            videoTitle: r.videoInfo?.title,
+            transcriptLength: r.transcript?.length,
+            fullTextLength: r.fullText?.length,
+            videoId: r.videoInfo?.videoId
+          })));
+          
           const sources = transcriptResults
             .filter(r => !r.error)
-            .map((result) => ({
-              pageContent: result.fullText,
-              metadata: {
+            .map((result) => {
+              // Use transcript content if available, otherwise use video description and metadata
+              const pageContent = result.fullText || `Title: ${result.videoInfo.title}
+Author: ${result.videoInfo.author}
+Duration: ${Math.floor(result.videoInfo.duration / 60)}:${String(result.videoInfo.duration % 60).padStart(2, '0')}
+Views: ${result.videoInfo.viewCount?.toLocaleString() || 'Unknown'}
+Published: ${new Date(result.videoInfo.publishedAt).toLocaleDateString()}
+
+Description:
+${result.videoInfo.description || 'No description available'}
+
+Tags: ${result.videoInfo.tags?.join(', ') || 'None'}`;
+
+              return {
+                pageContent,
+                metadata: {
                 title: result.videoInfo.title,
                 url: result.videoInfo.url,
                 thumbnail: result.videoInfo.thumbnail,
@@ -145,20 +194,43 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
                 transcriptLength: result.transcript.length,
                 transcript: result.transcript, // Include full transcript data
                 transcriptData: result.transcript // Alternative property name
-              }
-            }));
+                }
+              };
+            });
           
-          emitter.emit('data', JSON.stringify({ 
+          console.log('[YouTubeTranscriptAgent] Emitting sources count:', sources.length);
+          console.log('[YouTubeTranscriptAgent] Sources summary:', sources.map(s => ({
+            hasPageContent: !!s.pageContent,
+            pageContentLength: s.pageContent?.length,
+            title: s.metadata?.title,
+            videoId: s.metadata?.videoId,
+            type: s.metadata?.type
+          })));
+          
+          const sourcesPayload = { 
             type: 'sources', 
             data: sources 
-          }));
+          };
+          console.log('[YouTubeTranscriptAgent] Emitting sources payload:', JSON.stringify(sourcesPayload, null, 2));
+          emitter.emit('data', JSON.stringify(sourcesPayload));
 
           // Stream the response
+          console.log('[YouTubeTranscriptAgent] Starting to stream response...');
+          let responseChunkCount = 0;
           for await (const event of stream) {
+            console.log('[YouTubeTranscriptAgent] Received stream event:', {
+              event: event.event,
+              name: event.name,
+              hasData: !!event.data,
+              chunkType: typeof event.data?.chunk
+            });
+            
             if (
               event.event === 'on_chain_stream' &&
               event.name === 'YouTubeTranscriptResponseChain'
             ) {
+              responseChunkCount++;
+              console.log('[YouTubeTranscriptAgent] Emitting response chunk #', responseChunkCount, ':', event.data?.chunk);
               emitter.emit(
                 'data',
                 JSON.stringify({ type: 'response', data: event.data?.chunk }),
@@ -169,9 +241,11 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
               event.event === 'on_chain_end' &&
               event.name === 'YouTubeTranscriptResponseChain'
             ) {
+              console.log('[YouTubeTranscriptAgent] Chain ended, total response chunks:', responseChunkCount);
               emitter.emit('end');
             }
           }
+          console.log('[YouTubeTranscriptAgent] Finished processing, emitting end signal...');
         } else {
           // No valid transcripts found
           emitter.emit('data', JSON.stringify({ 
@@ -195,7 +269,5 @@ export class YouTubeTranscriptAgent implements MetaSearchAgentType {
         data: error.message 
       }));
     }
-    
-    return emitter;
   }
 }

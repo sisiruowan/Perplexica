@@ -63,9 +63,15 @@ const handleEmitterEvents = async (
   let recievedMessage = '';
   let sources: any[] = [];
 
+  console.log('[Chat API] Setting up emitter event handlers...');
+
   stream.on('data', (data) => {
+    console.log('[Chat API] Received emitter data:', data);
     const parsedData = JSON.parse(data);
+    console.log('[Chat API] Parsed emitter data:', { type: parsedData.type, hasData: !!parsedData.data });
+    
     if (parsedData.type === 'response') {
+      console.log('[Chat API] Sending response chunk to client:', parsedData.data);
       writer.write(
         encoder.encode(
           JSON.stringify({
@@ -78,20 +84,21 @@ const handleEmitterEvents = async (
 
       recievedMessage += parsedData.data;
     } else if (parsedData.type === 'sources') {
-      writer.write(
-        encoder.encode(
-          JSON.stringify({
-            type: 'sources',
-            data: parsedData.data,
-            messageId: aiMessageId,
-          }) + '\n',
-        ),
-      );
+      console.log('[Chat API] Sending sources to client:', { count: parsedData.data?.length, data: parsedData.data });
+      const sourcesPayload = JSON.stringify({
+        type: 'sources',
+        data: parsedData.data,
+        messageId: aiMessageId,
+      }) + '\n';
+      console.log('[Chat API] Sources payload:', sourcesPayload);
+      
+      writer.write(encoder.encode(sourcesPayload));
 
       sources = parsedData.data;
     }
   });
   stream.on('end', () => {
+    console.log('[Chat API] Stream ended, sending messageEnd and closing writer');
     writer.write(
       encoder.encode(
         JSON.stringify({
@@ -125,6 +132,11 @@ const handleEmitterEvents = async (
         }),
       ),
     );
+    writer.close();
+  });
+  
+  stream.on('error', (error) => {
+    console.error('[Chat API] Stream error:', error);
     writer.close();
   });
 };
@@ -183,8 +195,21 @@ const handleHistorySave = async (
 };
 
 export const POST = async (req: Request) => {
+  console.log('[Chat API] ==================== POST REQUEST START ====================');
+  console.log('[Chat API] POST request received at:', new Date().toISOString());
+  console.log('[Chat API] Request URL:', req.url);
+  console.log('[Chat API] Request method:', req.method);
+  console.log('[Chat API] Request headers:', Object.fromEntries(req.headers.entries()));
+  
   try {
+    console.log('[Chat API] About to parse request body...');
     const body = (await req.json()) as Body;
+    console.log('[Chat API] ==================== BODY PARSED ====================');
+    console.log('[Chat API] Request body parsed successfully:', {
+      messageId: body.message?.messageId,
+      focusMode: body.focusMode,
+      hasContent: !!body.message?.content
+    });
     const { message } = body;
 
     if (message.content === '') {
@@ -262,7 +287,13 @@ export const POST = async (req: Request) => {
       }
     });
 
+    console.log('[Chat API] Request body focusMode:', body.focusMode);
+    console.log('[Chat API] Request body message:', body.message?.content);
+    console.log('[Chat API] Available handlers:', Object.keys(searchHandlers));
+    
     const handler = searchHandlers[body.focusMode];
+    console.log('[Chat API] Handler found:', !!handler);
+    console.log('[Chat API] Handler type:', handler ? Object.getPrototypeOf(handler).constructor.name : 'undefined');
 
     if (!handler) {
       return Response.json(
@@ -273,6 +304,24 @@ export const POST = async (req: Request) => {
       );
     }
 
+    const responseStream = new TransformStream();
+    const writer = responseStream.writable.getWriter();
+    const encoder = new TextEncoder();
+
+    // Send an immediate response to establish the stream connection
+    console.log('[Chat API] Sending initial stream response...');
+    writer.write(
+      encoder.encode(
+        JSON.stringify({
+          type: 'status',
+          data: 'Connected',
+          messageId: aiMessageId,
+        }) + '\n',
+      ),
+    );
+
+    // Start the search process and get the event emitter immediately
+    console.log('[Chat API] Starting search and getting emitter...');
     const stream = await handler.searchAndAnswer(
       message.content,
       history,
@@ -284,25 +333,37 @@ export const POST = async (req: Request) => {
       body.youtubeContext,
     );
 
-    const responseStream = new TransformStream();
-    const writer = responseStream.writable.getWriter();
-    const encoder = new TextEncoder();
-
+    // Set up event handlers immediately after getting the emitter
+    console.log('[Chat API] Setting up emitter event handlers...');
     handleEmitterEvents(stream, writer, encoder, aiMessageId, message.chatId);
+    
+    // Start history save process
     handleHistorySave(message, humanMessageId, body.focusMode, body.files);
 
-    return new Response(responseStream.readable, {
+    const response = new Response(responseStream.readable, {
       headers: {
         'Content-Type': 'text/event-stream',
         Connection: 'keep-alive',
         'Cache-Control': 'no-cache, no-transform',
       },
     });
+    
+    console.log('[Chat API] ==================== RESPONSE CREATED ====================');
+    console.log('[Chat API] Response headers:', Object.fromEntries(response.headers.entries()));
+    console.log('[Chat API] Response body type:', typeof response.body);
+    console.log('[Chat API] Returning response...');
+    
+    return response;
   } catch (err) {
-    console.error('An error occurred while processing chat request:', err);
-    return Response.json(
+    console.error('[Chat API] Error occurred:', err);
+    console.error('[Chat API] Error stack:', err instanceof Error ? err.stack : 'No stack trace');
+    
+    const errorResponse = Response.json(
       { message: 'An error occurred while processing chat request' },
       { status: 500 },
     );
+    
+    console.log('[Chat API] Returning error response:', errorResponse);
+    return errorResponse;
   }
 };

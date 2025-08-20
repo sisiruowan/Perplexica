@@ -23,6 +23,7 @@ import ThinkBox from './ThinkBox';
 import CitationPopup from './CitationPopup';
 import { useCitation } from '@/contexts/CitationContext';
 import YouTubeTranscriptDisplay from './YouTubeTranscriptDisplay';
+import YouTubeVideoInline from './YouTubeVideoInline';
 import { useYouTube } from '@/contexts/YouTubeContext';
 
 const ThinkTagProcessor = ({
@@ -66,6 +67,8 @@ const MessageBox = ({
   const youtubeSource = message.sources?.find(
     source => source.metadata?.type === 'youtube' || source.metadata?.videoId
   );
+  
+  // YouTube source detection effect removed to prevent infinite logging
 
   // Set YouTube video context when source is found
   useEffect(() => {
@@ -335,37 +338,36 @@ const MessageBox = ({
               </div>
             )}
             
-            {/* YouTube Video Info Card */}
+            {/* YouTube Video Inline Display */}
             {youtubeSource?.metadata?.videoId && (
-              <div className="bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136C4.495 20.455 12 20.455 12 20.455s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-red-900 dark:text-red-100 truncate">
-                      {youtubeSource.metadata.title || 'YouTube Video'}
-                    </h4>
-                    <p className="text-xs text-red-700 dark:text-red-300 mt-1">
-                      {youtubeSource.metadata.author || 'Unknown'} • 
-                      {youtubeSource.metadata.duration ? ` ${Math.floor(youtubeSource.metadata.duration / 60)}:${String(youtubeSource.metadata.duration % 60).padStart(2, '0')}` : ''} • 
-                      {(youtubeSource.metadata.transcript || youtubeSource.metadata.transcriptData || []).length} segments
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <button
-                      onClick={() => setIsVideoPageOpen(true)}
-                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
-                    >
-                      View Details
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <YouTubeVideoInline
+                videoInfo={{
+                  videoId: youtubeSource.metadata.videoId || '',
+                  title: youtubeSource.metadata.title || 'YouTube Video',
+                  author: youtubeSource.metadata.author || 'Unknown',
+                  channelId: youtubeSource.metadata.channelId || '',
+                  duration: youtubeSource.metadata.duration || 0,
+                  thumbnail: youtubeSource.metadata.thumbnail || '',
+                  url: youtubeSource.metadata.url || '',
+                  publishedAt: youtubeSource.metadata.publishedAt || new Date().toISOString(),
+                  viewCount: youtubeSource.metadata.viewCount || 0,
+                  likeCount: youtubeSource.metadata.likeCount,
+                  commentCount: youtubeSource.metadata.commentCount,
+                  description: youtubeSource.metadata.description || '',
+                  tags: youtubeSource.metadata.tags || [],
+                  categoryId: youtubeSource.metadata.categoryId,
+                  defaultLanguage: youtubeSource.metadata.defaultLanguage,
+                  defaultAudioLanguage: youtubeSource.metadata.defaultAudioLanguage,
+                  liveBroadcastContent: youtubeSource.metadata.liveBroadcastContent,
+                  dimension: youtubeSource.metadata.dimension,
+                  definition: youtubeSource.metadata.definition,
+                  caption: youtubeSource.metadata.caption,
+                  licensedContent: youtubeSource.metadata.licensedContent,
+                  projection: youtubeSource.metadata.projection,
+                }}
+                transcript={youtubeSource.metadata.transcript || youtubeSource.metadata.transcriptData || []}
+                fullText={youtubeSource.pageContent || ''}
+              />
             )}
             <div className="flex flex-col space-y-2">
               <div className="flex flex-row items-center space-x-2">

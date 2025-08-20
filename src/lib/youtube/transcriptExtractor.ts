@@ -46,13 +46,17 @@ export interface YouTubeTranscriptResult {
 
 // Extract video ID from various YouTube URL formats
 export function extractYouTubeVideoId(url: string): string | null {
+  // Clean URL by removing invisible characters and trimming
+  const cleanUrl = url.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  
   const patterns = [
     /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/,
+    /(?:youtube\.com\/shorts\/)([^"&?\/\s]{11})/, // YouTube Shorts support
     /^([^"&?\/\s]{11})$/ // Just the video ID
   ];
   
   for (const pattern of patterns) {
-    const match = url.match(pattern);
+    const match = cleanUrl.match(pattern);
     if (match) {
       return match[1];
     }
@@ -62,8 +66,20 @@ export function extractYouTubeVideoId(url: string): string | null {
 
 // Detect YouTube URLs in text
 export function detectYouTubeUrls(text: string): string[] {
-  const urlPattern = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/gi;
-  const matches = text.match(urlPattern) || [];
+  // Clean text by removing invisible characters
+  const cleanText = text.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  
+  const urlPatterns = [
+    /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/gi,
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([^"&?\/\s]{11})/gi, // YouTube Shorts support
+  ];
+  
+  const matches: string[] = [];
+  urlPatterns.forEach(pattern => {
+    const patternMatches = cleanText.match(pattern) || [];
+    matches.push(...patternMatches);
+  });
+  
   return [...new Set(matches)]; // Remove duplicates
 }
 
@@ -81,15 +97,18 @@ function parseDuration(duration: string): number {
 
 // Fetch video info using YouTube Data API v3
 async function fetchVideoInfoWithAPI(videoId: string): Promise<YouTubeVideoInfo | null> {
+  console.log('[YouTube API] fetchVideoInfoWithAPI called for video ID:', videoId);
   try {
     // Apply rate limiting
     await waitForRateLimit(videoInfoRateLimiter);
     
     const apiKey = getYouTubeApiKey();
     if (!apiKey) {
-      console.warn('YouTube API key not configured, falling back to oEmbed');
+      console.warn('[YouTube API] No API key configured, falling back to oEmbed');
       return await fetchVideoInfoFallback(videoId);
     }
+    
+    console.log('[YouTube API] Using YouTube Data API v3 with key');
     
     const youtube = google.youtube({
       version: 'v3',
@@ -108,10 +127,15 @@ async function fetchVideoInfoWithAPI(videoId: string): Promise<YouTubeVideoInfo 
       id: [videoId],
     });
     
+    console.log('[YouTube API] API Response:', JSON.stringify(response.data, null, 2));
+    
     const video = response.data.items?.[0];
     if (!video) {
+      console.error('[YouTube API] Video not found in API response');
       throw new Error('Video not found');
     }
+    
+    console.log('[YouTube API] Video data found:', video.snippet?.title);
     
     const snippet = video.snippet!;
     const contentDetails = video.contentDetails!;
@@ -159,6 +183,7 @@ async function fetchVideoInfoWithAPI(videoId: string): Promise<YouTubeVideoInfo 
 
 // Fallback: Fetch video info using YouTube oEmbed API (no API key required)
 async function fetchVideoInfoFallback(videoId: string): Promise<YouTubeVideoInfo | null> {
+  console.log('[YouTube API] Using oEmbed fallback for video ID:', videoId);
   try {
     const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
     const response = await axios.get(oembedUrl);
@@ -213,9 +238,13 @@ async function fetchTranscript(videoId: string): Promise<YouTubeTranscript[]> {
 
 // Main function to extract YouTube transcript
 export async function extractYouTubeTranscript(url: string): Promise<YouTubeTranscriptResult> {
+  console.log('[YouTube API] Extracting transcript for URL:', url);
   const videoId = extractYouTubeVideoId(url);
   
+  console.log('[YouTube API] Extracted video ID:', videoId);
+  
   if (!videoId) {
+    console.error('[YouTube API] Failed to extract video ID from URL:', url);
     return {
       videoInfo: {
         videoId: '',
@@ -294,8 +323,20 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeTran
 export function youTubeTranscriptToDocument(result: YouTubeTranscriptResult): Document {
   const { videoInfo, fullText, transcript } = result;
   
+  // Use transcript content if available, otherwise use video description and metadata
+  const content = fullText || `Title: ${videoInfo.title}
+Author: ${videoInfo.author}
+Duration: ${Math.floor(videoInfo.duration / 60)}:${String(videoInfo.duration % 60).padStart(2, '0')}
+Views: ${videoInfo.viewCount?.toLocaleString() || 'Unknown'}
+Published: ${new Date(videoInfo.publishedAt).toLocaleDateString()}
+
+Description:
+${videoInfo.description || 'No description available'}
+
+Tags: ${videoInfo.tags?.join(', ') || 'None'}`;
+  
   return new Document({
-    pageContent: fullText,
+    pageContent: content,
     metadata: {
       source: videoInfo.url,
       title: videoInfo.title,

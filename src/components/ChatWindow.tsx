@@ -375,8 +375,19 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
     // Auto-switch focus mode if YouTube URLs are detected
     const autoSwitchResult = shouldAutoSwitchFocusMode(message, focusMode);
+    console.log('[ChatWindow] Focus mode check:', {
+      currentMode: focusMode,
+      shouldSwitch: autoSwitchResult.shouldSwitch,
+      recommendedMode: autoSwitchResult.recommendedMode,
+      detectedUrls: autoSwitchResult.detectedUrls,
+    });
+    
+    let actualFocusMode = focusMode;
+    
     if (autoSwitchResult.shouldSwitch && !rewrite) {
-      setFocusMode(autoSwitchResult.recommendedMode);
+      console.log('[ChatWindow] Switching focus mode to:', autoSwitchResult.recommendedMode);
+      actualFocusMode = autoSwitchResult.recommendedMode;
+      setFocusMode(actualFocusMode);
       
       // Show user-friendly notification via Clippy
       const switchMessage = generateAutoSwitchMessage(autoSwitchResult.detectedUrls);
@@ -406,14 +417,27 @@ const ChatWindow = ({ id }: { id?: string }) => {
     ]);
 
     const messageHandler = async (data: any) => {
+      console.log('[ChatWindow] messageHandler received data:', { 
+        type: data.type, 
+        hasData: !!data.data,
+        messageId: data.messageId 
+      });
+      
       if (data.type === 'error') {
+        console.error('[ChatWindow] Received error:', data.data);
         toast.error(data.data);
         setLoading(false);
         return;
       }
+      
+      if (data.type === 'status') {
+        console.log('[ChatWindow] messageHandler received status:', data.data);
+        return; // Just log status messages, don't process them further
+      }
 
       if (data.type === 'sources') {
         sources = data.data;
+        console.log('[ChatWindow] Received sources:', sources);
         if (!added) {
           setMessages((prevMessages) => [
             ...prevMessages,
@@ -508,62 +532,144 @@ const ChatWindow = ({ id }: { id?: string }) => {
 
     const messageIndex = messages.findIndex((m) => m.messageId === messageId);
 
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content: message,
-        message: {
-          messageId: messageId,
-          chatId: chatId!,
-          content: message,
-        },
+    console.log('[ChatWindow] Sending message with focus mode:', actualFocusMode);
+    
+    const requestBody = {
+      message: {
+        messageId: messageId,
         chatId: chatId!,
-        files: fileIds,
-        focusMode: focusMode,
-        optimizationMode: optimizationMode,
-        history: rewrite
-          ? chatHistory.slice(0, messageIndex === -1 ? undefined : messageIndex)
-          : chatHistory,
-        chatModel: {
-          name: chatModelProvider.name,
-          provider: chatModelProvider.provider,
+        content: message,
+      },
+      focusMode: actualFocusMode,
+      optimizationMode: optimizationMode,
+      history: rewrite
+        ? chatHistory.slice(0, messageIndex === -1 ? undefined : messageIndex)
+        : chatHistory,
+      files: fileIds,
+      chatModel: {
+        name: chatModelProvider?.name,
+        provider: chatModelProvider?.provider,
+      },
+      embeddingModel: {
+        name: embeddingModelProvider?.name,
+        provider: embeddingModelProvider?.provider,
+      },
+      systemInstructions: localStorage.getItem('systemInstructions'),
+      youtubeContext: hasActiveVideo() ? getVideoContext() : undefined,
+    };
+    
+    console.log('[ChatWindow] Request body:', JSON.stringify(requestBody, null, 2));
+    
+    try {
+      console.log('[ChatWindow] About to send fetch request to /api/chat...');
+      const startTime = Date.now();
+      
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        embeddingModel: {
-          name: embeddingModelProvider.name,
-          provider: embeddingModelProvider.provider,
-        },
-        systemInstructions: localStorage.getItem('systemInstructions'),
-        youtubeContext: hasActiveVideo() ? getVideoContext() : undefined,
-      }),
-    });
+        body: JSON.stringify(requestBody)
+      });
+      
+      const endTime = Date.now();
+      console.log(`[ChatWindow] Fetch completed in ${endTime - startTime}ms`);
+      
+      console.log('[ChatWindow] Response received:', {
+        status: res.status,
+        statusText: res.statusText,
+        ok: res.ok,
+        headers: Object.fromEntries(res.headers.entries()),
+        hasBody: !!res.body
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
+      if (!res.body) {
+        throw new Error('No response body');
+      }
 
-    if (!res.body) throw new Error('No response body');
-
-    const reader = res.body?.getReader();
+      console.log('[ChatWindow] About to create reader and start streaming...');
+      const reader = res.body?.getReader();
     const decoder = new TextDecoder('utf-8');
 
     let partialChunk = '';
+    let chunkCount = 0;
+    let sourcesReceived = false;
+    let responseStarted = false;
+
+    console.log('[ChatWindow] Starting to read stream response...');
 
     while (true) {
       const { value, done } = await reader.read();
-      if (done) break;
+      chunkCount++;
+      console.log(`[ChatWindow] Read chunk #${chunkCount}, done:`, done, 'value length:', value?.length);
+      
+      if (done) {
+        console.log('[ChatWindow] Stream reading completed, total chunks:', chunkCount);
+        break;
+      }
 
-      partialChunk += decoder.decode(value, { stream: true });
+      const decodedChunk = decoder.decode(value, { stream: true });
+      console.log('[ChatWindow] Decoded chunk:', decodedChunk);
+      partialChunk += decodedChunk;
 
       try {
         const messages = partialChunk.split('\n');
+        console.log('[ChatWindow] Split into messages:', messages.length);
+        
         for (const msg of messages) {
           if (!msg.trim()) continue;
+          console.log('[ChatWindow] Processing message:', msg);
+          
           const json = JSON.parse(msg);
+          console.log('[ChatWindow] Parsed JSON:', { type: json.type, hasData: !!json.data });
+          
+          if (json.type === 'status') {
+            console.log('[ChatWindow] Received status:', json.data);
+          } else if (json.type === 'sources') {
+            console.log('[ChatWindow] Received sources:', json.data);
+            console.log('[ChatWindow] Sources count:', json.data?.length);
+            sourcesReceived = true;
+          } else if (json.type === 'response') {
+            if (!responseStarted) {
+              console.log('[ChatWindow] Response stream started');
+              responseStarted = true;
+            }
+            console.log('[ChatWindow] Response chunk:', json.data);
+          }
+          
           messageHandler(json);
         }
         partialChunk = '';
       } catch (error) {
-        console.warn('Incomplete JSON, waiting for next chunk...');
+        console.warn('[ChatWindow] Incomplete JSON, waiting for next chunk...', error);
       }
+    }
+    
+    console.log('[ChatWindow] Stream processing summary:', {
+      sourcesReceived,
+      responseStarted,
+      totalChunks: chunkCount
+    });
+    
+    } catch (error) {
+      console.error('[ChatWindow] ==================== FETCH ERROR ====================');
+      console.error('[ChatWindow] Error in fetch/stream processing:', error);
+      console.error('[ChatWindow] Error type:', typeof error);
+      console.error('[ChatWindow] Error constructor:', error?.constructor?.name);
+      if (error instanceof Error) {
+        console.error('[ChatWindow] Error message:', error.message);
+        console.error('[ChatWindow] Error stack:', error.stack);
+      }
+      console.error('[ChatWindow] ==================== END ERROR ====================');
+      
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Request failed: ${errorMessage}`);
+      setLoading(false);
+      return;
     }
   };
 

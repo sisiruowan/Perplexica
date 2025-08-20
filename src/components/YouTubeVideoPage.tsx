@@ -530,7 +530,7 @@ const YouTubeVideoPage = ({
                 {searchQuery && filteredTranscript.length === 0 && (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                     <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No results found for "{searchQuery}"</p>
+                    <p>No results found for &quot;{searchQuery}&quot;</p>
                   </div>
                 )}
               </>

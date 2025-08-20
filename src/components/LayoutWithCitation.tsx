@@ -46,19 +46,7 @@ export default function LayoutWithCitation({ children }: { children: ReactNode }
         onClose={closeSidebar}
       />
       
-      {/* YouTube Video Page Modal */}
-      {isVideoPageOpen && currentVideo && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-6xl max-h-[90vh] overflow-hidden">
-            <YouTubeVideoPage
-              videoInfo={currentVideo.videoInfo}
-              transcript={currentVideo.transcript}
-              fullText={currentVideo.fullText}
-              onClose={() => setIsVideoPageOpen(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/* YouTube Video Page Modal - Disabled for inline display */}
       
       <ClippyAssistant ref={clippyRef} />
     </>

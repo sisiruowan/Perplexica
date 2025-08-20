@@ -8,6 +8,7 @@ const YOUTUBE_URL_PATTERNS = [
   /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^"&?\/\s]{11})/gi,
   /(?:https?:\/\/)?youtu\.be\/([^"&?\/\s]{11})/gi,
   /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^"&?\/\s]{11})/gi,
+  /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([^"&?\/\s]{11})/gi, // YouTube Shorts support
 ];
 
 /**
@@ -36,12 +37,14 @@ export function extractYouTubeUrls(message: string): string[] {
     return [];
   }
 
+  // Clean message by removing invisible characters
+  const cleanMessage = message.replace(/[\u200B-\u200D\uFEFF]/g, '');
   const urls: string[] = [];
   
   YOUTUBE_URL_PATTERNS.forEach(pattern => {
     pattern.lastIndex = 0; // Reset regex state
     let match;
-    while ((match = pattern.exec(message)) !== null) {
+    while ((match = pattern.exec(cleanMessage)) !== null) {
       urls.push(match[0]);
     }
   });
