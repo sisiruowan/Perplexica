@@ -68,6 +68,13 @@ const MessageBox = ({
     source => source.metadata?.type === 'youtube' || source.metadata?.videoId
   );
   
+  // Sources processing
+  
+  // YouTube source processing
+  
+  // Track transcript loading state
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  
   // YouTube source detection effect removed to prevent infinite logging
 
   // Set YouTube video context when source is found
@@ -105,6 +112,19 @@ const MessageBox = ({
       setCurrentVideo(videoData);
     }
   }, [youtubeSource?.metadata?.videoId, setCurrentVideo, youtubeSource]);
+  
+  // Monitor transcript loading state
+  useEffect(() => {
+    if (youtubeSource?.metadata?.videoId) {
+      const hasTranscriptData = (youtubeSource.metadata.transcript && youtubeSource.metadata.transcript.length > 0) ||
+                               (youtubeSource.metadata.transcriptData && youtubeSource.metadata.transcriptData.length > 0) ||
+                               (youtubeSource.pageContent && youtubeSource.pageContent.trim().length > 0);
+      
+      setTranscriptLoading(loading && isLast && !hasTranscriptData);
+    } else {
+      setTranscriptLoading(false);
+    }
+  }, [youtubeSource, loading, isLast]);
 
   useEffect(() => {
     const regex = /\[(\d+)\]/g;
@@ -367,6 +387,7 @@ const MessageBox = ({
                 }}
                 transcript={youtubeSource.metadata.transcript || youtubeSource.metadata.transcriptData || []}
                 fullText={youtubeSource.pageContent || ''}
+                isLoading={transcriptLoading}
               />
             )}
             <div className="flex flex-col space-y-2">

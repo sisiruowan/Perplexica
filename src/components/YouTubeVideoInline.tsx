@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   Play, 
   Clock, 
@@ -24,21 +24,58 @@ interface YouTubeVideoInlineProps {
   videoInfo: YouTubeVideoInfo;
   transcript: YouTubeTranscript[];
   fullText: string;
+  isLoading?: boolean;
 }
 
 const YouTubeVideoInline = ({
   videoInfo,
   transcript = [],
-  fullText = ''
+  fullText = '',
+  isLoading = false
 }: YouTubeVideoInlineProps) => {
   const [showVideo, setShowVideo] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(false);
+  // Auto-expand transcript when there's content available
+  const [showTranscript, setShowTranscript] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedTimestamp, setCopiedTimestamp] = useState<number | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   
+  // State for streaming transcript updates
+  const [currentTranscript, setCurrentTranscript] = useState<YouTubeTranscript[]>(transcript);
+  const [currentFullText, setCurrentFullText] = useState<string>(fullText);
+  const [isTranscriptLoading, setIsTranscriptLoading] = useState(isLoading);
+  
+  // Update local state when props change (for streaming updates)
+  useEffect(() => {
+    if (transcript && transcript.length > 0) {
+      setCurrentTranscript(transcript);
+      setIsTranscriptLoading(false);
+    }
+  }, [transcript]);
+  
+  useEffect(() => {
+    if (fullText && fullText.trim()) {
+      setCurrentFullText(fullText);
+      setIsTranscriptLoading(false);
+    }
+  }, [fullText]);
+  
+  // Component initialization
+  
+  // Update loading state when prop changes
+  useEffect(() => {
+    setIsTranscriptLoading(isLoading);
+  }, [isLoading]);
+  
   // Check if transcript is actually available
-  const hasTranscript = transcript && transcript.length > 0;
+  const hasTranscript = currentTranscript && currentTranscript.length > 0;
+  const hasContent = currentFullText && currentFullText.trim().length > 0;
+  
+  // Content availability tracking removed to prevent infinite loops
+  
+  // Auto-expand is now handled by default state (useState(true))
+  
+  // Remove infinite logging - only log when data actually changes
   
   // Component props logging removed to prevent infinite logging
 
@@ -57,9 +94,11 @@ const YouTubeVideoInline = ({
   // Get video statistics
   const getVideoStats = () => {
     const totalDuration = formatTime(videoInfo.duration);
-    const transcriptLength = hasTranscript ? transcript.length : 0;
-    const wordCount = fullText.split(/\s+/).filter(word => word.length > 0).length;
-    const avgWordsPerMinute = videoInfo.duration ? Math.round(wordCount / (videoInfo.duration / 60)) : 0;
+    const transcriptLength = hasTranscript ? currentTranscript.length : 0;
+    // Use currentFullText for word count if available, otherwise use empty string
+    const textForWordCount = currentFullText || '';
+    const wordCount = textForWordCount.split(/\s+/).filter(word => word.length > 0).length;
+    const avgWordsPerMinute = videoInfo.duration && wordCount > 0 ? Math.round(wordCount / (videoInfo.duration / 60)) : 0;
     
     return {
       duration: totalDuration,
@@ -92,7 +131,7 @@ const YouTubeVideoInline = ({
   };
 
   // Filter transcript based on search query
-  const filteredTranscript = hasTranscript ? transcript.filter(segment =>
+  const filteredTranscript = hasTranscript ? currentTranscript.filter(segment =>
     segment.text.toLowerCase().includes(searchQuery.toLowerCase())
   ) : [];
 
@@ -252,7 +291,9 @@ const YouTubeVideoInline = ({
               <span>
                 {hasTranscript 
                   ? `Video Transcript (${stats.segments} segments, ${stats.words} words)` 
-                  : 'Video Content'
+                  : hasContent
+                    ? `Video Content (${stats.words} words)`
+                    : 'Video Content'
                 }
               </span>
             </h4>
@@ -268,7 +309,14 @@ const YouTubeVideoInline = ({
               ) : (
                 <>
                   <ChevronDown className="w-4 h-4" />
-                  <span>{hasTranscript ? 'Show Transcript' : 'Show Content'}</span>
+                  <span>
+                    {hasTranscript 
+                      ? 'Show Transcript' 
+                      : hasContent 
+                        ? 'Show Content' 
+                        : 'Show Details'
+                    }
+                  </span>
                 </>
               )}
             </button>
@@ -276,7 +324,17 @@ const YouTubeVideoInline = ({
 
           {showTranscript && (
             <div className="space-y-4">
-              {hasTranscript ? (
+              {/* Loading indicator for transcript */}
+              {isTranscriptLoading && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-blue-700 dark:text-blue-300 text-sm">Loading transcript...</span>
+                  </div>
+                </div>
+              )}
+              
+              {hasTranscript || hasContent ? (
                 <>
                   {/* Search */}
                   <div className="relative">
@@ -311,7 +369,9 @@ const YouTubeVideoInline = ({
 
                   {/* Transcript */}
                   <div ref={transcriptRef} className="space-y-2 max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2">
-                    {(searchQuery ? filteredTranscript : transcript).map((segment, index) => (
+                    {hasTranscript ? (
+                      // Show structured transcript
+                      (searchQuery ? filteredTranscript : currentTranscript).map((segment, index) => (
                       <div
                         key={index}
                         className="p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
@@ -355,10 +415,34 @@ const YouTubeVideoInline = ({
                           </div>
                         </div>
                       </div>
-                    ))}
+                    ))
+                    ) : hasContent ? (
+                      // Show text content when no structured transcript is available
+                      <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <h5 className="font-medium text-gray-900 dark:text-white mb-3">Video Content</h5>
+                        <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
+                          {searchQuery ? (
+                            currentFullText.split(new RegExp(`(${searchQuery})`, 'gi')).map((part, i) =>
+                              part.toLowerCase() === searchQuery.toLowerCase() ? (
+                                <mark key={i} className="bg-yellow-200 dark:bg-yellow-800 px-1 rounded">
+                                  {part}
+                                </mark>
+                              ) : (
+                                part
+                              )
+                            )
+                          ) : (
+                            currentFullText
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
-                  {searchQuery && filteredTranscript.length === 0 && (
+                  {searchQuery && (
+                    (hasTranscript && filteredTranscript.length === 0) ||
+                    (hasContent && !hasTranscript && !currentFullText.toLowerCase().includes(searchQuery.toLowerCase()))
+                  ) && (
                     <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                       <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No results found for &quot;{searchQuery}&quot;</p>
@@ -379,11 +463,11 @@ const YouTubeVideoInline = ({
                   </div>
 
                   {/* Video Content from API */}
-                  {fullText && (
+                  {currentFullText && (
                     <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                       <h5 className="font-medium text-gray-900 dark:text-white mb-3">Video Information</h5>
                       <div className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap">
-                        {fullText}
+                        {currentFullText}
                       </div>
                     </div>
                   )}
